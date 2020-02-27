@@ -1,0 +1,1 @@
+npm run start:dev -> start local node server che riparte a ogni modifica

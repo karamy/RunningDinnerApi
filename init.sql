@@ -1,0 +1,1 @@
+--Dovrebbe contenere la query di struttura base per inizializzare il DB
