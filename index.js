@@ -7,7 +7,7 @@ const app = express()
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
-app.use(cors())
+app.use(cors()) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
 
 const getUsers = (request, response) => {
   pool.query('SELECT * FROM users', (error, results) => {
@@ -29,12 +29,27 @@ const addUser = (request, response) => {
   })
 }
 
+const checkUserExists = (request, response) => {
+  const { phone_number } = request.body;
+
+  console.warn(request.body);
+  pool.query('SELECT count(*) FROM users WHERE phone_number =\'' + phone_number+'\'', (error, results) => {
+    if (error) {
+      throw error
+    }
+    response.status(200).json(results.rows[0].count == 1) 
+  })
+}
+
+//Define routes
 app
   .route('/users')
-  // GET endpoint
-  .get(getUsers)
-  // POST endpoint
-  .post(addUser)
+  .get(getUsers) // GET endpoint to list Users
+  .post(addUser) // POST endpoint to add User
+
+app
+  .route('/existsUser')
+  .post(checkUserExists)
 
 // Start server
 app.listen(process.env.PORT || 3002, () => {
