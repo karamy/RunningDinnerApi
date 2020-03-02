@@ -15,6 +15,7 @@ app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Headers", 'Origin,X-Requested-With,Content-Type,Accept,content-type,application/json');
   next();
 }); */
+console.warn("PROVA1");
 const getUsers = (request, response) => {
   pool.query('SELECT * FROM users', (error, results) => {
     if (error) {
