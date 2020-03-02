@@ -7,8 +7,7 @@ const app = express()
 
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: true }))
-app.use(cors()) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
-app.options('*', cors()) // include before other routes
+app.use(cors('*')) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
 
 const getUsers = (request, response) => {
   pool.query('SELECT * FROM users', (error, results) => {
