@@ -20,6 +20,7 @@ const getUsers = (request, response) => {
   pool.query('SELECT * FROM users', (error, results) => {
     if (error) {
       console.warn(error); 
+      response.status(500).json({message: 'errore query'})
     } else {
       response.status(200).json(results.rows) 
     }
@@ -32,6 +33,7 @@ const addUser = (request, response) => {
   pool.query('INSERT INTO users (userid, name, address, phone_number, age) VALUES ($1, $2, $3, $4, $5)', [userid, name, address, phone_number, age], error => {
     if (error) {
       console.warn(error); 
+      response.status(500).json({message: 'errore query'})
     } else {
       response.status(201).json({ status: 'success', message: 'User added.' })
     }
@@ -44,9 +46,10 @@ const checkUserExists = (request, response) => {
   console.warn(request.body);
   pool.query('SELECT count(*) FROM users WHERE phone_number =\'' + phone_number+'\'', (error, results) => {
     if (error) {
-      throw error
+      response.status(500).json({message: 'errore query'})
+    } else {
+      response.status(200).json(results.rows[0].count == 1) 
     }
-    response.status(200).json(results.rows[0].count == 1) 
   })
 }
 
