@@ -19,7 +19,7 @@ console.warn("PROVA2");
 const getUsers = (request, response) => {
   pool.query('SELECT * FROM users', (error, results) => {
     if (error) {
-      console.warn(JSON.strinfigy(error)); 
+      console.warn(error); 
     } else {
       response.status(200).json(results.rows) 
     }
@@ -31,7 +31,7 @@ const addUser = (request, response) => {
 
   pool.query('INSERT INTO users (userId, name, address, phone_number, age) VALUES ($1, $2, $3, $4, $5)', [userId, name, address, phone_number, age], error => {
     if (error) {
-      console.warn(JSON.strinfigy(error)); 
+      console.warn(error); 
     } else {
       response.status(201).json({ status: 'success', message: 'User added.' })
     }
