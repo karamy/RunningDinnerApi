@@ -27,9 +27,9 @@ const getUsers = (request, response) => {
 }
 
 const addUser = (request, response) => {
-  const { userId, name, address, phone_number, age } = request.body
+  const { userid, name, address, phone_number, age } = request.body
 
-  pool.query('INSERT INTO users (userId, name, address, phone_number, age) VALUES ($1, $2, $3, $4, $5)', [userId, name, address, phone_number, age], error => {
+  pool.query('INSERT INTO users (userid, name, address, phone_number, age) VALUES ($1, $2, $3, $4, $5)', [userid, name, address, phone_number, age], error => {
     if (error) {
       console.warn(error); 
     } else {
