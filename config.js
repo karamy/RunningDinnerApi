@@ -8,6 +8,7 @@ const connectionString = `postgresql://${process.env.DB_USER}:${process.env.DB_P
 if(isProduction){
   console.warn("PRODUCTION");
 }
+
 const pool = new Pool({
   connectionString: connectionString, //isProduction ? process.env.DATABASE_URL : connectionString,
   ssl: isProduction,
