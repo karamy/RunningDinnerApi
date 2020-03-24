@@ -10,7 +10,7 @@ if(isProduction){
 }
 
 const pool = new Pool({
-  connectionString: connectionString, //isProduction ? process.env.DATABASE_URL : connectionString,
+  connectionString: connectionString, //isProduction ? process.env.DATABASE_URL : connectionString, Da modificare per utilizzare la variabile d'ambiente su Heroku, ora non funziona
   ssl: isProduction,
 })
 
