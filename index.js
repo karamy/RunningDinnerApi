@@ -76,9 +76,11 @@ const checkUserExists = (request, response) => {
 
 const login = (req, res) => {
   const { phone_number } = req.body;
+  console.warn('Login: ' + JSON.stringify(req.body));
 
   pool.query('SELECT * FROM users WHERE phone_number =\'' + phone_number + '\'', (error, results) => {
     if (error) {
+      console.warn(error);
       response.status(500).json({ message: 'errore query' })
     } else {
       user = results.rows[0];
