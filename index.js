@@ -128,6 +128,28 @@ const compareContacts = (request, response) => {
 
 };
 
+const runQuery = (request, response) => {
+  const query = request.body.query;
+
+  console.warn("RunQuery: " + query);
+
+  if (query) {
+    pool.query(query, (error, results) => {
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        console.warn("Results: " + JSON.stringify(results.rows));
+        response.status(200).json(results.rows);
+      }
+    }
+    );
+  } else {
+    console.warn('Empty query');
+    response.status(400).json("Empty query");
+  }
+};
+
 //--------Routes Definition-------//
 
 //Users
@@ -150,8 +172,13 @@ app
   .route('/compareContacts')
   .post(authenticateJWT, compareContacts);
 
+//RunQuery
+app
+  .route('/runQuery')
+  .post(authenticateJWT, runQuery);
+
 
 // Start Server
-app.listen(process.env.PORT || 3002, () => {
+app.listen(process.env.PORT || 1111, () => {
   console.log(`Server listening`)
 })

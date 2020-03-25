@@ -4,6 +4,3 @@ heroku logs --tail -> visualizza ultime righe del log di Node
 
 ENDPOINT: https://runningdinnerapi.herokuapp.com
 ENDPOINT LOCALE: http://localhost:1111
-
-ROTTE:
-/users --> metodi GET e POST
