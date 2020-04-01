@@ -10,8 +10,7 @@ const app = express()
 const accessTokenSecret = 'carloebbasta';
 /* const refreshTokenSecret = 'refreshcarloebbasta';
 const refreshTokens = []; */
-//app.use(bodyParser.json())
-app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.json({ limit: '50mb' })); // Configurato per rimuovere il limite di dimensioni del pacchetto http che impediva la registrazione utente
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(cors()) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
 
