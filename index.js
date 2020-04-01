@@ -10,7 +10,8 @@ const app = express()
 const accessTokenSecret = 'carloebbasta';
 /* const refreshTokenSecret = 'refreshcarloebbasta';
 const refreshTokens = []; */
-app.use(bodyParser.json())
+//app.use(bodyParser.json())
+app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(cors()) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
 
@@ -50,9 +51,11 @@ const getUsers = (request, response) => {
 };
 
 const addUser = (request, response) => {
-  const { name, address, phone_number, age } = request.body
+  const { name, address, phoneNumber, birthDate, profilePhoto } = request.body
 
-  pool.query('INSERT INTO users (name, address, phone_number, age) VALUES ($1, $2, $3, $4)', [name, address, phone_number, age], error => {
+  console.log("Inserimento nuovo utente: " + request.body.name);
+
+  pool.query('INSERT INTO users (name, address, phone_number, birth_date, profile_photo, created_on) VALUES ($1, $2, $3, $4, $5, $6)', [name, address, phoneNumber, birthDate, profilePhoto, new Date()], error => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' })
@@ -81,16 +84,24 @@ const login = (req, res) => {
   pool.query('SELECT * FROM users WHERE phone_number =\'' + phone_number + '\'', (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       user = results.rows[0];
       if (user) {
-        // Generate an access token
-        const accessToken = jwt.sign({ username: user.username, role: user.role }, accessTokenSecret);
-        // Risposta contenente token e dati utente
-        res.json({
-          accessToken,
-          user
+        // Aggiorno le informazioni sull'ultimo accesso dell'utente
+        pool.query('UPDATE users SET last_login = $1 WHERE phone_number = $2', [new Date(), phone_number], (error, results) => {
+          if (error) {
+            console.warn(error);
+            res.status(500).json({ message: 'errore query update last_login' });
+          } else {
+            // Generate an access token
+            const accessToken = jwt.sign({ username: user.username, role: user.role }, accessTokenSecret);
+            // Risposta contenente token e dati utente
+            res.json({
+              accessToken,
+              user
+            });
+          }
         });
       } else {
         res.send('Incorrect credentials o.O');
