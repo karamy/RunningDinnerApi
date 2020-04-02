@@ -97,8 +97,8 @@ const login = (req, res) => {
             const accessToken = jwt.sign({ username: user.username, role: user.role }, accessTokenSecret);
             // Risposta contenente token e dati utente
             res.json({
-              accessToken,
-              user
+              accessToken: accessToken,
+              userData: user
             });
           }
         });
