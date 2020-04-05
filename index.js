@@ -8,8 +8,16 @@ const jwt = require('jsonwebtoken');
 //--------Initialization--------//
 const app = express()
 const accessTokenSecret = 'carloebbasta';
-/* const refreshTokenSecret = 'refreshcarloebbasta';
-const refreshTokens = []; */
+const refreshTokenSecret = 'refreshcarloebbasta';
+const H24 = 86400; // Indica i secondi in un giorno
+
+// Elenco di refresh tokens contenenti quelli validi. Dal momento che il refresh token
+// non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
+// la struttura in memoria, che quindi non sopravvive al riavvio del server, 
+// il quale sbatte fuori tutti 
+const refreshTokens = []; 
+
+
 app.use(bodyParser.json({ limit: '50mb' })); // Configurato per rimuovere il limite di dimensioni del pacchetto http che impediva la registrazione utente
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(cors()) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
@@ -25,14 +33,15 @@ const authenticateJWT = (req, res, next) => {
 
     jwt.verify(token, accessTokenSecret, (err, user) => {
       if (err) {
-        return res.sendStatus(403);
+        // Token non valido o scaduto, ritorno unauthorized
+        return res.status(401).send('Invalid token');
       }
 
-      req.user = user;
+      req.user = user; // Imposto lo user nelle chiamate autenticate in modo che gli endpoint lo abbiano a disposizione
       next();
     });
   } else {
-    res.sendStatus(401);
+    res.status(401).send('No authorization header');
   }
 };
 
@@ -93,11 +102,24 @@ const login = (req, res) => {
             console.warn(error);
             res.status(500).json({ message: 'errore query update last_login' });
           } else {
-            // Generate an access token
-            const accessToken = jwt.sign({ username: user.username, role: user.role }, accessTokenSecret);
+            // Genero le informazioni di sessione memorizzate nel token (rimuovo profile_photo)
+            const userData = {
+              userid: user.userid,
+              name: user.name,
+              address: user.address,
+              phone_number: user.phone_number,
+              birth_date: user.birth_date,
+              refreshedOn: new Date()
+            };
+            // Genero access token e refresh token, impostando la durata a un giorno
+            const accessToken = jwt.sign(userData, accessTokenSecret, { expiresIn: H24 });
+            const refreshToken = jwt.sign(userData, refreshTokenSecret);
+            refreshTokens.push(refreshToken); // Aggiungo il refreshToken alla lista in memoria, non sopravvive a riavvio server
+
             // Risposta contenente token e dati utente
             res.json({
               accessToken: accessToken,
+              refreshToken: refreshToken,
               userData: user
             });
           }
@@ -107,6 +129,32 @@ const login = (req, res) => {
       }
     }
   })
+};
+
+const refreshToken = (req, res) => {
+  const refreshToken = req.body.refreshToken;
+
+  if (!refreshTokens.includes(refreshToken)) {
+    return res.status(404).send('Refresh token not found (server riavviato)');
+  }
+
+  // Verifico refresh token
+  jwt.verify(refreshToken, refreshTokenSecret, (err, user) => {
+    if (err) {
+      return res.status(401).send('Invalid refresh token');
+    }
+
+    // Creo il nuovo access token modificando il valore refreshedOn per generarne uno
+    // diverso, altrimenti la funzione 'sign' genererebbe lo stesso di prima già scaduto
+    // Inoltre aumentata leggermente validità altrimenti per qualche motivo utilizzandolo
+    // nasce scaduto
+    user.refreshedOn = new Date();
+    const newAccessToken = jwt.sign(user, accessTokenSecret, { expiresIn: H24 + 100 });
+    
+    res.json({
+      accessToken: newAccessToken
+    });
+  });
 };
 
 const compareContacts = (request, response) => {
@@ -174,8 +222,10 @@ app
   .post(checkUserExists)
 
 //Login
-app
-  .post('/login', login);
+app.post('/login', login);
+
+//RefreshToken
+app.post('/refreshToken', refreshToken);
 
 //Contacts
 app
