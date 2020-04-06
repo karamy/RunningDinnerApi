@@ -15,7 +15,7 @@ const H24 = 86400; // Indica i secondi in un giorno
 // non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
 // la struttura in memoria, che quindi non sopravvive al riavvio del server, 
 // il quale sbatte fuori tutti 
-const refreshTokens = []; 
+const refreshTokens = [];
 
 
 app.use(bodyParser.json({ limit: '50mb' })); // Configurato per rimuovere il limite di dimensioni del pacchetto http che impediva la registrazione utente
@@ -150,7 +150,7 @@ const refreshToken = (req, res) => {
     // nasce scaduto
     user.refreshedOn = new Date();
     const newAccessToken = jwt.sign(user, accessTokenSecret, { expiresIn: H24 + 100 });
-    
+
     res.json({
       accessToken: newAccessToken
     });
@@ -172,7 +172,7 @@ const compareContacts = (request, response) => {
           console.warn(localContacts[i]);
           for (var j = 0; j < dbContacts.length; j++) { // Per ogni utente su DB
             if (localContacts[i].phoneNumber == dbContacts[j].phone_number) { // Match
-              resContacts.push({ phoneNumber: localContacts[i].phoneNumber });
+              resContacts.push({ phoneNumber: localContacts[i].phoneNumber, imageUrl: dbContacts[j].profile_photo });
             }
           }
         }
