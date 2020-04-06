@@ -8,4 +8,4 @@ ENDPOINT LOCALE: http://localhost:1111
 Info utili:
 
 - Negli endpoint autenticati la property 'user' di 'req' rappresenta l'utente loggato e può essere utilizzata per evitare di passare parametri già inclusi nel token
-- Il refresh token non sopravvive a un riavvio del server (o deploy su heroku), quindi sicuramente bisogna rifare il login
+- Il refresh token non sopravvive a un riavvio del server (o deploy su heroku), quindi sicuramente bisogna rifare il login dopo che l'access token è scaduto. Per causare un logout al riavvio server bisogna implementare un array in memoria che tenga le sessioni attive, e nella verifica del token fare come il refresh verificando che il token sia all'interno prima di verificarlo tramite algoritmo
