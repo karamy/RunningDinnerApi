@@ -173,13 +173,15 @@ const compareContacts = (request, response) => {
           for (var j = 0; j < dbContacts.length; j++) { // Per ogni utente su DB
             for (var x = 0; x < localContacts[i].phoneNumber.length; x++) { // Per ogni numero di telefono
               if (localContacts[i].phoneNumber[x] === dbContacts[j].phone_number) { // Match
+                console.warn("Local Contact[i].phoneNumber[x] match: " + localContacts[i].phoneNumber[x]);
                 resContacts.push({ phoneNumber: localContacts[i].phoneNumber[x], imageUrl: dbContacts[j].profile_photo });
+                console.warn("ResContacts: " + resContacts);
               }
             }
           }
         }
+        response.status(200).json(resContacts);
       }
-      response.status(200).json(resContacts);
     });
   } else {
     console.warn('Ricevuto array di contatti vuoto');
