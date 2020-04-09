@@ -171,8 +171,10 @@ const compareContacts = (request, response) => {
         for (var i = 0; i < localContacts.length; i++) { // Per ogni utente su App
           console.warn(localContacts[i]);
           for (var j = 0; j < dbContacts.length; j++) { // Per ogni utente su DB
-            if (localContacts[i].phoneNumber == dbContacts[j].phone_number) { // Match
-              resContacts.push({ phoneNumber: localContacts[i].phoneNumber, imageUrl: dbContacts[j].profile_photo });
+            for (var x = 0; x < localContacts[i].phoneNumber.length; x++) { // Per ogni numero di telefono
+              if (localContacts[i].phoneNumber[x] == dbContacts[j].phone_number) { // Match
+                resContacts.push({ phoneNumber: localContacts[i].phoneNumber[x], imageUrl: dbContacts[j].profile_photo });
+              }
             }
           }
         }
