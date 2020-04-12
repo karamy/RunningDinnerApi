@@ -20,11 +20,11 @@ const refreshTokens = [];
 
 app.use(bodyParser.json({ limit: '50mb' })); // Configurato per rimuovere il limite di dimensioni del pacchetto http che impediva la registrazione utente
 app.use(bodyParser.urlencoded({ extended: true }))
-app.use(cors()) //Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
+app.use(cors()) // Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
 
 console.warn("App Avviata: versione " + process.env.VERSION);
 
-//Authorization Middleware
+// Authorization Middleware
 const authenticateJWT = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -43,6 +43,14 @@ const authenticateJWT = (req, res, next) => {
   } else {
     res.status(401).send('No authorization header');
   }
+};
+
+// Funzione che esegue la rollback di una transazione
+const rollback = function (pool, response, err) { // Funzione che esegue la rollback dall'ultima begin
+  console.log(err);
+  pool.query('ROLLBACK', function () {
+    response.status(500).json({ message: 'errore query, fatto rollback' })
+  });
 };
 
 //--------Routes Functions-------//
@@ -157,6 +165,47 @@ const refreshToken = (req, res) => {
   });
 };
 
+const getParams = (request, response) => {
+  const rdParams = {
+    groupId: 0 // Valorizzo di base il groupId per evitare errori in query successive
+  };
+
+  console.log("GetParams - User: " + request.user.userid);
+
+  // 1 - GroupId
+  pool.query('SELECT * FROM groups_users WHERE userid = ' + request.user.userid,
+    (error, results) => {
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        if (results.rows.length > 0) {
+          // Scelto di selezionare il primo gruppo a cui fa parte l'utente, anche se teoricamente non
+          // può far parte di più gruppi contemporaneamente
+          rdParams.groupId = results.rows[0]['groupid'];
+        }
+
+        // 2 - DinnerId
+        pool.query('SELECT * FROM dinners_detgroups WHERE groupid = ' + rdParams.groupId,
+          (error, results) => {
+            if (error) {
+              console.warn(error);
+              response.status(500).json({ message: 'errore query' })
+            } else {
+              if (results.rows.length > 0) {
+                // Scelto di selezionare la prima cena a cui fa parte l'utente, anche se teoricamente non
+                // può far parte di più cene contemporaneamente
+                rdParams.dinnerId = results.rows[0]['dinnerid'];
+              }
+
+              // Ritorno i parametri dell'utente
+              response.status(200).json(rdParams);
+            }
+          });
+      }
+    });
+};
+
 const compareContacts = (request, response) => {
   const localContacts = request.body;
   const resContacts = [];
@@ -190,6 +239,97 @@ const compareContacts = (request, response) => {
     response.status(200).json(resContacts);
   }
 
+};
+
+const inviteGroup = (request, response) => {
+  const { userId: userIdToInvite } = request.body;
+
+  console.warn("InviteGroup: " + userIdToInvite);
+
+  pool.query('SELECT count(*) FROM groups_users WHERE userid = ' + userIdToInvite, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+
+      if (parseInt(results.rows[0]['count']) >= 1) {
+        response.status(400).json({ message: 'userId ' + userIdToInvite + ' già presente in gruppi' })
+      } else {
+        const sessionUserId = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
+        const groupId = '' + sessionUserId + userIdToInvite; // Genero un groupId concatenando gli userId dei partecipanti
+
+        pool.query('BEGIN', function (err) {
+          if (err) return rollback(pool, response, err);
+          pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
+            [groupId, sessionUserId], (err) => {
+              if (err) return rollback(pool, response, err);
+              pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
+                [groupId, userIdToInvite], (err) => {
+                  if (err) return rollback(pool, response, err);
+
+                  pool.query('COMMIT', function () {
+                    response.status(200).send();
+                  });
+                });
+            });
+        });
+      }
+    }
+  });
+};
+
+const leaveGroup = (request, response) => {
+  const { groupId } = request.body;
+  const userId = request.user.userid;
+
+  console.warn("LeaveGroup: " + groupId);
+
+  // Cancello tutte le entries che hanno il mio gruppo di appartenenza, e anche quelle
+  // in cui è presente il mio utente in modo da pulire il DB in caso per errore faccia parte
+  // di più gruppi contemporaneamente
+  pool.query('DELETE FROM groups_users WHERE groupid = ' + groupId + ' OR userid = ' + userId,
+    (error, results) => {
+      if (error) {
+        console.log(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        response.status(200).send();
+      }
+    });
+};
+
+const getDinners = (request, response) => {
+  //TODO
+};
+
+const createDinner = (request, response) => {
+  const { dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
+  const createdBy = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
+  const dinnerId = Math.floor(Math.random() * (100000 - 1)) + 1; // Genero dinnerId random per averlo subito invece che farlo generare al DB
+
+  console.log("Crate dinner - dinnerId: " + dinnerId);
+
+  // Gestione inserimento doppio in transazione con eventuale rollback se qualcosa fallisce
+  pool.query('BEGIN', function (err) {
+    if (err) {
+      return rollback(pool, response, err);
+    }
+    // Creo la cena
+    pool.query('INSERT INTO dinners (dinnerid, dinner_type, dinner_date, dinner_description, created_by) VALUES ($1, $2, $3, $4, $5)',
+      [dinnerId, dinnerType, dinnerDate, dinnerDescription, createdBy], (err) => {
+        if (err) return rollback(pool, response, err);
+
+        // Aggiungo il gruppo come primo partecipante della cena
+        pool.query('INSERT INTO dinners_detgroups (dinnerid, groupid) VALUES ($1, $2)',
+          [dinnerId, groupId], (err) => {
+            if (err) return rollback(pool, response, err);
+
+            pool.query('COMMIT', function () {
+              response.status(201).send();
+            });
+          });
+      });
+  });
 };
 
 const runQuery = (request, response) => {
@@ -233,10 +373,31 @@ app.post('/login', login);
 //RefreshToken
 app.post('/refreshToken', refreshToken);
 
-//Contacts
+//Params
+app
+  .route('/params')
+  .get(authenticateJWT, getParams)
+
+//CompareContacts
 app
   .route('/compareContacts')
   .post(authenticateJWT, compareContacts);
+
+//InviteGroup
+app
+  .route('/inviteGroup')
+  .post(authenticateJWT, inviteGroup);
+
+//LeaveGroup
+app
+  .route('/leaveGroup')
+  .post(authenticateJWT, leaveGroup);
+
+//Dinners
+app
+  .route('/dinners')
+  .get(authenticateJWT, getDinners)
+  .post(authenticateJWT, createDinner)
 
 //RunQuery
 app
