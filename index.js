@@ -219,11 +219,11 @@ const compareContacts = (request, response) => {
         const dbContacts = results.rows;
         for (var i = 0; i < localContacts.length; i++) { // Per ogni utente su App
           for (var j = 0; j < dbContacts.length; j++) { // Per ogni utente su DB
-            for (var x = 0; x < localContacts[i].phoneNumber.length; x++) { // Per ogni numero di telefono
-              if (localContacts[i].phoneNumber[x] === dbContacts[j].phone_number &&
-                !resContacts.find(contact => contact.phoneNumber === localContacts[i].phoneNumber[x])) { // Match e controllo se esiste già quel numero
+            for (var x = 0; x < localContacts[i].phoneNumbers.length; x++) { // Per ogni numero di telefono
+              if (localContacts[i].phoneNumbers[x] === dbContacts[j].phone_number &&
+                !resContacts.find(contact => contact.phoneNumbers === localContacts[i].phoneNumbers[x])) { // Match e controllo se esiste già quel numero
                 resContacts.push({
-                  phoneNumber: localContacts[i].phoneNumber[x],
+                  phoneNumbers: localContacts[i].phoneNumbers[x],
                   imageUrl: dbContacts[j].profile_photo,
                   userId: dbContacts[j].userid
                 });
