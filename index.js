@@ -4,6 +4,9 @@ const bodyParser = require('body-parser')
 const cors = require('cors')
 const { pool } = require('./config')
 const jwt = require('jsonwebtoken');
+const admin = require('firebase-admin');
+var serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-734a84c2a5.json");
+
 
 //--------Initialization--------//
 const app = express()
@@ -17,10 +20,15 @@ const H24 = 86400; // Indica i secondi in un giorno
 // il quale sbatte fuori tutti 
 const refreshTokens = [];
 
-
 app.use(bodyParser.json({ limit: '50mb' })); // Configurato per rimuovere il limite di dimensioni del pacchetto http che impediva la registrazione utente
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(cors()) // Utilizzo libreria CORS per configurare domini da cui ricevere chiamata (nel caso dell'app devo impostare ALL)
+
+// Configurazione Firebase
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://runningdinnersms.firebaseio.com"
+});
 
 console.warn("App Avviata: versione " + process.env.VERSION);
 
@@ -95,6 +103,7 @@ const checkUserExists = (request, response) => {
 
 const login = (req, res) => {
   const { phone_number } = req.body;
+
   console.warn('Login: ' + JSON.stringify(req.body));
 
   pool.query('SELECT * FROM users WHERE phone_number =\'' + phone_number + '\'', (error, results) => {
@@ -165,6 +174,22 @@ const refreshToken = (req, res) => {
   });
 };
 
+const updateFirebaseToken = (request, response) => {
+  const { firebaseToken } = request.body;
+
+  console.warn("UpdateToken for user: " + request.user.userid);
+
+  // Valorizzo (o aggiorno) il token assegnato all'utente
+  pool.query('UPDATE users SET firebase_token = $1 WHERE userid = $2', [firebaseToken, request.user.userid], (error, results) => {
+    if (error) {
+      console.warn(error);
+      res.status(500).json({ message: 'errore query update firebase token' });
+    } else {
+      response.status(200).send();
+    }
+  });
+};
+
 const getParams = (request, response) => {
   const rdParams = {
     groupId: 0 // Valorizzo di base il groupId per evitare errori in query successive
@@ -210,6 +235,8 @@ const compareContacts = (request, response) => {
   const localContacts = request.body;
   const resContacts = [];
 
+  console.log("CompareContacts - User: " + request.user.userid);
+
   if (localContacts.length > 0) {
     pool.query('SELECT * FROM users', (error, results) => {
       if (error) {
@@ -238,7 +265,6 @@ const compareContacts = (request, response) => {
     console.warn('Ricevuto array di contatti vuoto');
     response.status(200).json(resContacts);
   }
-
 };
 
 const inviteGroup = (request, response) => {
@@ -253,9 +279,9 @@ const inviteGroup = (request, response) => {
     } else {
 
       if (parseInt(results.rows[0]['count']) >= 1) {
-        response.status(400).json({ message: 'userId ' + userIdToInvite + ' già presente in gruppi' })
+        response.status(400).json({ message: 'userId ' + userIdToInvite + ' già presente in un gruppo' })
       } else {
-        const sessionUserId = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
+        /* const sessionUserId = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
         const groupId = '' + sessionUserId + userIdToInvite; // Genero un groupId concatenando gli userId dei partecipanti
 
         pool.query('BEGIN', function (err) {
@@ -272,6 +298,37 @@ const inviteGroup = (request, response) => {
                   });
                 });
             });
+        }); */
+
+        // Ottengo il token dell'utente che voglio invitare
+        pool.query('SELECT * FROM users WHERE userid = ' + userIdToInvite, (error, results) => {
+          if (error) {
+            console.log(error);
+            response.status(500).json({ message: 'errore query' })
+          } else {
+            const userToken = results.rows[0]['firebase_token'];
+            if (!userToken) {
+              console.warn('Utente non abilitato a ricevere notifiche push');
+              response.status(400).json("Utente non abilitato a ricevere notifiche push");
+            } else {
+              const message = {
+                data: {
+                  msg: "Prima notifica!"
+                },
+                token: userToken
+              };
+
+              // Invio notifica di aggiunta a gruppo
+              admin.messaging().send(message)
+                .then((firebaseResponse) => {
+                  console.log('Invito a gruppo inviato con successo');
+                  response.status(200).send();
+                })
+                .catch((error) => {
+                  console.log('Errore invito a gruppo:', error);
+                });
+            }
+          }
         });
       }
     }
@@ -393,6 +450,11 @@ app
   .route('/leaveGroup')
   .post(authenticateJWT, leaveGroup);
 
+//UpdateFirebaseToken
+app
+  .route('/updateFirebaseToken')
+  .post(authenticateJWT, updateFirebaseToken);
+
 //Dinners
 app
   .route('/dinners')
@@ -404,6 +466,7 @@ app
   .route('/runQuery')
   .post(authenticateJWT, runQuery);
 
+//--------Run--------//
 
 // Start Server
 app.listen(process.env.PORT || 1111, () => {
