@@ -148,6 +148,21 @@ const login = (req, res) => {
   })
 };
 
+const logout = (request, response) => {
+  const { userId } = request.body;
+
+  console.warn('Logout: ' + userId);
+
+  pool.query('UPDATE users SET firebase_token = NULL WHERE userid = ' + userId , (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      response.status(200).send();
+    }
+  })
+};
+
 const refreshToken = (req, res) => {
   const refreshToken = req.body.refreshToken;
 
@@ -426,6 +441,11 @@ app
 
 //Login
 app.post('/login', login);
+
+//Logout
+app
+  .route('/logout')
+  .post(logout)
 
 //RefreshToken
 app.post('/refreshToken', refreshToken);
