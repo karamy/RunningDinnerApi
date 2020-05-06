@@ -124,26 +124,34 @@ const updateUser = (req, res) => {
                   console.warn(error);
                   res.status(500).json({ message: 'errore query update birth_date' });
                 } else {
-                  // Genero le informazioni di sessione memorizzate nel token (rimuovo profile_photo)
-                  const userData = {
-                    userid: user.userid,
-                    name: user.name,
-                    address: user.address,
-                    phone_number: user.phone_number,
-                    birth_date: user.birth_date,
-                    refreshedOn: new Date()
-                  };
+                  pool.query('UPDATE users SET profile_photo = $1 WHERE phone_number = $2', [user.profile_photo, user.phone_number], (error, results) => {
+                    if (error) {
+                      console.warn(error);
+                      res.status(500).json({ message: 'errore query update birth_date' });
+                    } else {
+                      // Genero le informazioni di sessione memorizzate nel token
+                      const userData = {
+                        userid: user.userid,
+                        name: user.name,
+                        address: user.address,
+                        phone_number: user.phone_number,
+                        birth_date: user.birth_date,
+                        profile_photo: user.profile_photo,
+                        refreshedOn: new Date()
+                      };
 
-                  // Genero access token e refresh token, impostando la durata a un giorno
-                  const accessToken = jwt.sign(userData, accessTokenSecret, { expiresIn: H24 });
-                  const refreshToken = jwt.sign(userData, refreshTokenSecret);
-                  refreshTokens.push(refreshToken); // Aggiungo il refreshToken alla lista in memoria, non sopravvive a riavvio server
+                      // Genero access token e refresh token, impostando la durata a un giorno
+                      const accessToken = jwt.sign(userData, accessTokenSecret, { expiresIn: H24 });
+                      const refreshToken = jwt.sign(userData, refreshTokenSecret);
+                      refreshTokens.push(refreshToken); // Aggiungo il refreshToken alla lista in memoria, non sopravvive a riavvio server
 
-                  // Risposta contenente dati utente
-                  res.json({
-                    accessToken: accessToken,
-                    refreshToken: refreshToken,
-                    userData: user
+                      // Risposta contenente dati utente
+                      res.json({
+                        accessToken: accessToken,
+                        refreshToken: refreshToken,
+                        userData: user
+                      });
+                    }
                   });
                 }
               })
@@ -207,7 +215,7 @@ const logout = (request, response) => {
 
   console.warn('Logout: ' + userId);
 
-  pool.query('UPDATE users SET firebase_token = NULL WHERE userid = ' + userId , (error, results) => {
+  pool.query('UPDATE users SET firebase_token = NULL WHERE userid = ' + userId, (error, results) => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' })
