@@ -519,7 +519,6 @@ const leaveGroup = (request, response) => {
           admin.messaging().send(notificationMsg)
             .then((firebaseResponse) => {
               console.log('Rimozione da gruppo inviato con successo');
-              response.status(200).send();
             })
             .catch((error) => {
               console.log('Errore rimozione da gruppo:', error);
@@ -537,10 +536,22 @@ const getDinners = (request, response) => {
 
 const createDinner = (request, response) => {
   const { dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
+  const userId = request.user.userid;
   const createdBy = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
   const dinnerId = Math.floor(Math.random() * (100000 - 1)) + 1; // Genero dinnerId random per averlo subito invece che farlo generare al DB
+  var userToken;
 
   console.log("Crate dinner - dinnerId: " + dinnerId);
+
+  //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
+  pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+    }
+  });
 
   // Gestione inserimento doppio in transazione con eventuale rollback se qualcosa fallisce
   pool.query('BEGIN', function (err) {
@@ -558,6 +569,26 @@ const createDinner = (request, response) => {
             if (err) return rollback(pool, response, err);
 
             pool.query('COMMIT', function () {
+              // Genero le informazioni da inviare nella notifica
+              const notificationMsgBody = {
+                type: 'updateParams'
+              };
+              const notificationMsg = {
+                data: {
+                  msg: JSON.stringify(notificationMsgBody)
+                },
+                token: userToken
+              };
+
+              // Invio notifica di aggiunta automatica a cena essendo i creatori
+              admin.messaging().send(notificationMsg)
+                .then((firebaseResponse) => {
+                  console.log('Notifica di aggiunta a cena inviata con successo');
+                })
+                .catch((error) => {
+                  console.log('Errore notifica di aggiunta a cena:', error);
+                });
+
               response.status(201).send();
             });
           });
