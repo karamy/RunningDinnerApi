@@ -349,6 +349,7 @@ const inviteGroup = (request, response) => {
 
   console.warn("InviteGroup: " + userIdToInvite);
 
+  // Verifico che l'utente da invitare non appartenga già ad un gruppo
   pool.query('SELECT count(*) FROM groups_users WHERE userid = ' + userIdToInvite, (error, results) => {
     if (error) {
       console.log(error);
@@ -358,25 +359,6 @@ const inviteGroup = (request, response) => {
       if (parseInt(results.rows[0]['count']) >= 1) {
         response.status(400).json({ message: 'userId ' + userIdToInvite + ' già presente in un gruppo' })
       } else {
-        /* const sessionUserId = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
-        const groupId = '' + sessionUserId + userIdToInvite; // Genero un groupId concatenando gli userId dei partecipanti
-
-        pool.query('BEGIN', function (err) {
-          if (err) return rollback(pool, response, err);
-          pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
-            [groupId, sessionUserId], (err) => {
-              if (err) return rollback(pool, response, err);
-              pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
-                [groupId, userIdToInvite], (err) => {
-                  if (err) return rollback(pool, response, err);
-
-                  pool.query('COMMIT', function () {
-                    response.status(200).send();
-                  });
-                });
-            });
-        }); */
-
         // Ottengo il token dell'utente che voglio invitare
         pool.query('SELECT * FROM users WHERE userid = ' + userIdToInvite, (error, results) => {
           if (error) {
@@ -388,15 +370,94 @@ const inviteGroup = (request, response) => {
               console.warn('Utente non abilitato a ricevere notifiche push');
               response.status(400).json("Utente non abilitato a ricevere notifiche push");
             } else {
-              const message = {
+              // Genero le informazioni da inviare nella notifica
+              const notificationMsgBody = {
+                type: 'confirmGroupInvite',
+                userIdThatInvites: request.user.userid,
+                userNameThatInvites: request.user.name
+              };
+              const notificationMsg = {
                 data: {
-                  msg: "Prima notifica!"
+                  msg: JSON.stringify(notificationMsgBody)
+                },
+                token: userToken
+              };
+
+              // Invio notifica di richiesta di aggiunta a gruppo
+              admin.messaging().send(notificationMsg)
+                .then((firebaseResponse) => {
+                  console.log('Richiesta di invito a gruppo inviato con successo');
+                  response.status(200).send();
+                })
+                .catch((error) => {
+                  console.log('Errore invito a gruppo:', error);
+                });
+            }
+          }
+        });
+      }
+    }
+  });
+};
+
+const inviteGroupConfirm = (request, response) => {
+  const { userId: userIdThatInvites } = request.body;
+
+  console.warn("InviteGroupConfirm: " + userIdThatInvites);
+
+  // Verifico che l'utente a cui confermo l'invito non appartenga già ad un gruppo
+  pool.query('SELECT count(*) FROM groups_users WHERE userid = ' + userIdThatInvites, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+
+      if (parseInt(results.rows[0]['count']) >= 1) {
+        response.status(400).json({ message: 'userId ' + userIdThatInvites + ' già presente in un gruppo' })
+      } else {
+        const sessionUserId = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
+        const groupId = '' + sessionUserId + userIdThatInvites; // Genero un groupId concatenando gli userId dei partecipanti
+
+        pool.query('BEGIN', function (err) {
+          if (err) return rollback(pool, response, err);
+          pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
+            [groupId, sessionUserId], (err) => {
+              if (err) return rollback(pool, response, err);
+              pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
+                [groupId, userIdThatInvites], (err) => {
+                  if (err) return rollback(pool, response, err);
+
+                  pool.query('COMMIT', function () {
+                    response.status(200).send();
+                  });
+                });
+            });
+        });
+
+        // Ottengo il token dell'utente a cui voglio dare conferma di invito
+        pool.query('SELECT * FROM users WHERE userid = ' + userIdThatInvites, (error, results) => {
+          if (error) {
+            console.log(error);
+            response.status(500).json({ message: 'errore query' })
+          } else {
+            const userToken = results.rows[0]['firebase_token'];
+            if (!userToken) { // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo
+              console.warn('Utente non abilitato a ricevere notifiche push');
+              response.status(400).json("Utente non abilitato a ricevere notifiche push");
+            } else {
+              // Genero le informazioni da inviare nella notifica
+              const notificationMsgBody = {
+                type: 'updateParams'
+              };
+              const notificationMsg = {
+                data: {
+                  msg: JSON.stringify(notificationMsgBody)
                 },
                 token: userToken
               };
 
               // Invio notifica di aggiunta a gruppo
-              admin.messaging().send(message)
+              admin.messaging().send(notificationMsg)
                 .then((firebaseResponse) => {
                   console.log('Invito a gruppo inviato con successo');
                   response.status(200).send();
@@ -415,8 +476,19 @@ const inviteGroup = (request, response) => {
 const leaveGroup = (request, response) => {
   const { groupId } = request.body;
   const userId = request.user.userid;
+  var userToken = null; //Token dell'altro utente del mio gruppo
 
   console.warn("LeaveGroup: " + groupId);
+
+  //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
+  pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+    }
+  });
 
   // Cancello tutte le entries che hanno il mio gruppo di appartenenza, e anche quelle
   // in cui è presente il mio utente in modo da pulire il DB in caso per errore faccia parte
@@ -427,6 +499,33 @@ const leaveGroup = (request, response) => {
         console.log(error);
         response.status(500).json({ message: 'errore query' })
       } else {
+        if (!userToken) {
+          // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo,
+          // lascio comunque proseguire, ma l'altro utente non sarà notificato
+          console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+        } else {
+          // Genero le informazioni da inviare nella notifica
+          const notificationMsgBody = {
+            type: 'updateParams'
+          };
+          const notificationMsg = {
+            data: {
+              msg: JSON.stringify(notificationMsgBody)
+            },
+            token: userToken
+          };
+
+          // Invio notifica di rimozione da gruppo
+          admin.messaging().send(notificationMsg)
+            .then((firebaseResponse) => {
+              console.log('Rimozione da gruppo inviato con successo');
+              response.status(200).send();
+            })
+            .catch((error) => {
+              console.log('Errore rimozione da gruppo:', error);
+            });
+        }
+
         response.status(200).send();
       }
     });
@@ -531,6 +630,11 @@ app
 app
   .route('/inviteGroup')
   .post(authenticateJWT, inviteGroup);
+
+//InviteGroupConfirm
+app
+  .route('/inviteGroupConfirm')
+  .post(authenticateJWT, inviteGroupConfirm);
 
 //LeaveGroup
 app
