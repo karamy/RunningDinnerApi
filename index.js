@@ -103,65 +103,27 @@ const checkUserExists = (request, response) => {
 
 const updateUser = (req, res) => {
   const { user } = req.body;
-  pool.query('SELECT * FROM users WHERE phone_number =\'' + user.phone_number + '\'', (error, results) => {
+  // Aggiorno informazioni dell'utente
+  pool.query('UPDATE users SET name = $1, address = $2, birth_date = $3, profile_photo = $4 WHERE phone_number = $5', [user.name, user.address, user.birth_date, user.profile_photo, user.phone_number], (error, results) => {
     if (error) {
       console.warn(error);
-      res.status(500).json({ message: 'errore query' })
+      response.status(500).json({ message: 'errore query' })
     } else {
-      // Aggiorno le informazioni dell'utente
-      pool.query('UPDATE users SET name = $1 WHERE phone_number = $2', [user.name, user.phone_number], (error, results) => {
+      pool.query('SELECT * FROM users WHERE phone_number = $1', [user.phone_number], (error, results) => {
         if (error) {
           console.warn(error);
-          res.status(500).json({ message: 'errore query update name' });
+          res.status(500).json({ message: 'errore query' })
         } else {
-          pool.query('UPDATE users SET address = $1 WHERE phone_number = $2', [user.address, user.phone_number], (error, results) => {
-            if (error) {
-              console.warn(error);
-              res.status(500).json({ message: 'errore query update address' });
-            } else {
-              pool.query('UPDATE users SET birth_date = $1 WHERE phone_number = $2', [user.birth_date, user.phone_number], (error, results) => {
-                if (error) {
-                  console.warn(error);
-                  res.status(500).json({ message: 'errore query update birth_date' });
-                } else {
-                  pool.query('UPDATE users SET profile_photo = $1 WHERE phone_number = $2', [user.profile_photo, user.phone_number], (error, results) => {
-                    if (error) {
-                      console.warn(error);
-                      res.status(500).json({ message: 'errore query update birth_date' });
-                    } else {
-                      // Genero le informazioni di sessione memorizzate nel token
-                      const userData = {
-                        userid: user.userid,
-                        name: user.name,
-                        address: user.address,
-                        phone_number: user.phone_number,
-                        birth_date: user.birth_date,
-                        profile_photo: user.profile_photo,
-                        refreshedOn: new Date()
-                      };
-
-                      // Genero access token e refresh token, impostando la durata a un giorno
-                      const accessToken = jwt.sign(userData, accessTokenSecret, { expiresIn: H24 });
-                      const refreshToken = jwt.sign(userData, refreshTokenSecret);
-                      refreshTokens.push(refreshToken); // Aggiungo il refreshToken alla lista in memoria, non sopravvive a riavvio server
-
-                      // Risposta contenente dati utente
-                      res.json({
-                        accessToken: accessToken,
-                        refreshToken: refreshToken,
-                        userData: user
-                      });
-                    }
-                  });
-                }
-              })
-            }
-          })
+          const userEdited = results.rows[0];
+          // Risposta contenente dati utente
+          res.json({
+            userData: userEdited
+          });
         }
       })
     }
   })
-}
+};
 
 const login = (req, res) => {
   const { phone_number } = req.body;
