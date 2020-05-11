@@ -77,11 +77,6 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
         sound: "default"
       }
     },
-    apns: { // Imposto di suonare su IOS
-      payload: {
-        sound: "default"
-      }
-    },
     token: userToken
   };
 
