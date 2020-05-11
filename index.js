@@ -403,7 +403,7 @@ const inviteGroupConfirm = (request, response) => {
             response.status(500).json({ message: 'errore query' })
           } else {
             const userToken = results.rows[0]['firebase_token'];
-            if (!userToken) { // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo
+            if (!userToken) { // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo, ma l'utente potrebbe aver fatto logout
               console.warn('Utente non abilitato a ricevere notifiche push');
               response.status(400).json("Utente non abilitato a ricevere notifiche push");
             } else {
@@ -448,7 +448,9 @@ const leaveGroup = (request, response) => {
       console.log(error);
       response.status(500).json({ message: 'errore query' })
     } else {
-      userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+      if (results.rows.length > 0) { // Check inserito perchè se l'altro utente fa logout non riesco più ad abbandonare gruppo
+        userToken = results.rows[0]['firebase_token']; // Valorizzo il token dell'altro utente che appartiene al gruppo
+      }
     }
   });
 
@@ -511,7 +513,9 @@ const createDinner = (request, response) => {
       console.log(error);
       response.status(500).json({ message: 'errore query' })
     } else {
-      userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+      if (results.rows.length > 0) { //Check inserito perchè se l'altro utente fa logout non riesco più a creare la cena
+        userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+      }
     }
   });
 
@@ -531,25 +535,27 @@ const createDinner = (request, response) => {
             if (err) return rollback(pool, response, err);
 
             pool.query('COMMIT', function () {
-              // Genero le informazioni da inviare nella notifica
-              const notificationMsgBody = {
-                type: 'updateParams'
-              };
-              const notificationMsg = {
-                data: {
-                  msg: JSON.stringify(notificationMsgBody)
-                },
-                token: userToken
-              };
+              if (userToken) { // Verifico che l'altro utente del gruppo abbia un token valido per inviargli la notifica
+                // Genero le informazioni da inviare nella notifica
+                const notificationMsgBody = {
+                  type: 'updateParams'
+                };
+                const notificationMsg = {
+                  data: {
+                    msg: JSON.stringify(notificationMsgBody)
+                  },
+                  token: userToken
+                };
 
-              // Invio notifica di aggiunta automatica a cena essendo i creatori
-              admin.messaging().send(notificationMsg)
-                .then((firebaseResponse) => {
-                  console.log('Notifica di aggiunta a cena inviata con successo');
-                })
-                .catch((error) => {
-                  console.log('Errore notifica di aggiunta a cena:', error);
-                });
+                // Invio notifica di aggiunta automatica a cena essendo i creatori
+                admin.messaging().send(notificationMsg)
+                  .then((firebaseResponse) => {
+                    console.log('Notifica di aggiunta a cena inviata con successo');
+                  })
+                  .catch((error) => {
+                    console.log('Errore notifica di aggiunta a cena:', error);
+                  });
+              }
 
               response.status(201).send();
             });
