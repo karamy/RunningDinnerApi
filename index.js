@@ -71,7 +71,16 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
     notification: {
       title: notificationTitle,
       body: notificationBody,
-      sound: "default"
+    },
+    android: { // Imposto di suonare su Android
+      notification: {
+        sound: "default"
+      }
+    },
+    apns: { // Imposto di suonare su IOS
+      payload: {
+        sound: "default"
+      }
     },
     token: userToken
   };
@@ -460,38 +469,38 @@ const leaveGroup = (request, response) => {
       if (results.rows.length > 0) { // Check inserito perchè se l'altro utente fa logout non riesco più ad abbandonare gruppo
         userToken = results.rows[0]['firebase_token']; // Valorizzo il token dell'altro utente che appartiene al gruppo
       }
+
+      // Cancello tutte le entries che hanno il mio gruppo di appartenenza, e anche quelle
+      // in cui è presente il mio utente in modo da pulire il DB in caso per errore faccia parte
+      // di più gruppi contemporaneamente
+      pool.query('DELETE FROM groups_users WHERE groupid = ' + groupId + ' OR userid = ' + userId,
+        (error, results) => {
+          if (error) {
+            console.log(error);
+            response.status(500).json({ message: 'errore query' })
+          } else {
+            if (!userToken) {
+              // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo,
+              // lascio comunque proseguire, ma l'altro utente non sarà notificato
+              console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+            } else {
+              // Genero le informazioni da inviare nella notifica
+              const notificationMsgBody = {
+                type: 'updateParams'
+              };
+
+              // Invio notifica
+              sendNotification(userToken, "Gruppo sciolto",
+                "Il gruppo di cui fai parte è stato sciolto",
+                notificationMsgBody
+              );
+            }
+
+            response.status(200).send();
+          }
+        });
     }
   });
-
-  // Cancello tutte le entries che hanno il mio gruppo di appartenenza, e anche quelle
-  // in cui è presente il mio utente in modo da pulire il DB in caso per errore faccia parte
-  // di più gruppi contemporaneamente
-  pool.query('DELETE FROM groups_users WHERE groupid = ' + groupId + ' OR userid = ' + userId,
-    (error, results) => {
-      if (error) {
-        console.log(error);
-        response.status(500).json({ message: 'errore query' })
-      } else {
-        if (!userToken) {
-          // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo,
-          // lascio comunque proseguire, ma l'altro utente non sarà notificato
-          console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
-        } else {
-          // Genero le informazioni da inviare nella notifica
-          const notificationMsgBody = {
-            type: 'updateParams'
-          };
-
-          // Invio notifica
-          sendNotification(userToken, "Gruppo sciolto",
-            "Il gruppo di cui fai parte è stato sciolto",
-            notificationMsgBody
-          );
-        }
-
-        response.status(200).send();
-      }
-    });
 };
 
 const getDinners = (request, response) => {
