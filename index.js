@@ -427,22 +427,14 @@ const inviteGroupConfirm = (request, response) => {
               const notificationMsgBody = {
                 type: 'updateParams'
               };
-              const notificationMsg = {
-                data: {
-                  msg: JSON.stringify(notificationMsgBody)
-                },
-                token: userToken
-              };
 
-              // Invio notifica di aggiunta a gruppo
-              admin.messaging().send(notificationMsg)
-                .then((firebaseResponse) => {
-                  console.log('Invito a gruppo inviato con successo');
-                  response.status(200).send();
-                })
-                .catch((error) => {
-                  console.log('Errore invito a gruppo:', error);
-                });
+              // Invio notifica
+              sendNotification(userToken, "Invito confermato",
+                "L'invito al gruppo è stato confermato",
+                notificationMsgBody
+              );
+
+              response.status(200).send();
             }
           }
         });
@@ -488,21 +480,12 @@ const leaveGroup = (request, response) => {
           const notificationMsgBody = {
             type: 'updateParams'
           };
-          const notificationMsg = {
-            data: {
-              msg: JSON.stringify(notificationMsgBody)
-            },
-            token: userToken
-          };
 
-          // Invio notifica di rimozione da gruppo
-          admin.messaging().send(notificationMsg)
-            .then((firebaseResponse) => {
-              console.log('Rimozione da gruppo inviato con successo');
-            })
-            .catch((error) => {
-              console.log('Errore rimozione da gruppo:', error);
-            });
+          // Invio notifica
+          sendNotification(userToken, "Gruppo sciolto",
+            "Il gruppo di cui fai parte è stato sciolto",
+            notificationMsgBody
+          );
         }
 
         response.status(200).send();
@@ -556,21 +539,12 @@ const createDinner = (request, response) => {
                 const notificationMsgBody = {
                   type: 'updateParams'
                 };
-                const notificationMsg = {
-                  data: {
-                    msg: JSON.stringify(notificationMsgBody)
-                  },
-                  token: userToken
-                };
 
-                // Invio notifica di aggiunta automatica a cena essendo i creatori
-                admin.messaging().send(notificationMsg)
-                  .then((firebaseResponse) => {
-                    console.log('Notifica di aggiunta a cena inviata con successo');
-                  })
-                  .catch((error) => {
-                    console.log('Errore notifica di aggiunta a cena:', error);
-                  });
+                // Invio notifica
+                sendNotification(userToken, "Creazione cena",
+                  "Una nuova RunningDinner è stata creata",
+                  notificationMsgBody
+                );
               }
 
               response.status(201).send();
