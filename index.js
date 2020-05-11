@@ -70,7 +70,8 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
     },
     notification: {
       title: notificationTitle,
-      body: notificationBody
+      body: notificationBody,
+      sound: "default"
     },
     token: userToken
   };
