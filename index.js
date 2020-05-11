@@ -61,6 +61,30 @@ const rollback = function (pool, response, err) { // Funzione che esegue la roll
   });
 };
 
+// Funzione che invia una notifica push
+const sendNotification = function (userToken, notificationTitle, notificationBody, notificationData) {
+  // Genero le informazioni da inviare nella notifica
+  const notificationMsg = {
+    data: {
+      msg: JSON.stringify(notificationData)
+    },
+    notification: {
+      title: notificationTitle,
+      body: notificationBody
+    },
+    token: userToken
+  };
+
+  // Invio notifica tramite Firebase Admin
+  admin.messaging().send(notificationMsg)
+    .then((firebaseResponse) => {
+      console.log('Notifica inviata con successo');
+    })
+    .catch((error) => {
+      console.log('Errore invio notifica:', error);
+    });
+};
+
 //--------Routes Functions-------//
 
 const getUsers = (request, response) => {
@@ -338,22 +362,14 @@ const inviteGroup = (request, response) => {
                 userIdThatInvites: request.user.userid,
                 userNameThatInvites: request.user.name
               };
-              const notificationMsg = {
-                data: {
-                  msg: JSON.stringify(notificationMsgBody)
-                },
-                token: userToken
-              };
 
-              // Invio notifica di richiesta di aggiunta a gruppo
-              admin.messaging().send(notificationMsg)
-                .then((firebaseResponse) => {
-                  console.log('Richiesta di invito a gruppo inviato con successo');
-                  response.status(200).send();
-                })
-                .catch((error) => {
-                  console.log('Errore invito a gruppo:', error);
-                });
+              // Invio notifica
+              sendNotification(userToken, "Nuovo invito",
+                "Hai un nuovo invito a partecipare ad un gruppo",
+                notificationMsgBody
+              );
+
+              response.status(200).send();
             }
           }
         });
