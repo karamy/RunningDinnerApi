@@ -154,6 +154,30 @@ const updateUser = (req, res) => {
   })
 };
 
+const getBadges = (request, response) => {
+  pool.query('SELECT * FROM badges', (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      console.log("Ecco i badges")
+      response.status(200).json(results.rows)
+    }
+  })
+};
+
+const getFoodAllergies = (request, response) => {
+  pool.query('SELECT * FROM food_allergies', (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      console.log("Ecco le intolleranze")
+      response.status(200).json(results.rows)
+    }
+  })
+};
+
 const login = (req, res) => {
   const { phone_number } = req.body;
 
@@ -448,6 +472,31 @@ const inviteGroupConfirm = (request, response) => {
   });
 };
 
+const getGroupPartner = (request, res) => {
+  const { groupId } = request.body;
+  const userId = request.user.userid;
+
+  // Ottengo dati del mio partner escludendo me stesso
+  pool.query('SELECT * FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      const partner = results.rows[0]
+      console.log("Info partner inviati")
+      // Risposta contenente dati utente
+      res.json({
+        userid: partner.userid,
+        name: partner.name,
+        address: partner.address,
+        phone_number: partner.phone_number,
+        birth_date: partner.birth_date,
+        profile_photo: partner.profile_photo
+      });
+    }
+  });
+}
+
 const leaveGroup = (request, response) => {
   const { groupId } = request.body;
   const userId = request.user.userid;
@@ -599,6 +648,18 @@ app
   .route('/existsUser')
   .post(checkUserExists)
 
+//getBadges
+app
+  .route('/getBadges')
+  .get(getBadges)
+  .post(getBadges) //POST endpoint to get badges list
+
+//getFoodAllergies
+app
+  .route('/getFoodAllergies')
+  .get(getFoodAllergies)
+  .post(getFoodAllergies) //POST endpoint to get badges list
+
 //Login
 app.post('/login', login);
 
@@ -629,6 +690,11 @@ app
 app
   .route('/inviteGroupConfirm')
   .post(authenticateJWT, inviteGroupConfirm);
+
+//getGroupPartner
+app
+  .route('/getGroupPartner')
+  .post(authenticateJWT, getGroupPartner);
 
 //LeaveGroup
 app
