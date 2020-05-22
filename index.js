@@ -5,7 +5,7 @@ const cors = require('cors')
 const { pool } = require('./config')
 const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
-var serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-734a84c2a5.json");
+var serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-075efce3ba.json");
 
 
 //--------Initialization--------//
