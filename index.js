@@ -173,9 +173,77 @@ const getFoodAllergies = (request, response) => {
       response.status(500).json({ message: 'errore query' })
     } else {
       console.log("Ecco le intolleranze")
+      // Risposta contenente la lista di tutte le intolleranze
       response.status(200).json(results.rows)
     }
   })
+};
+
+const getUserFoodAllergies = (req, res) => {
+  const { userId } = req.body;
+  pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id WHERE allergies_detusers.user_id = ' + userId, (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      const userAllergies = results.rows
+      // Risposta contenente intolleranze utente
+      res.json(userAllergies);
+    }
+  })
+};
+
+const getPartnerFoodAllergies = (req, res) => {
+  const groupData = req.body;
+  pool.query('SELECT userid FROM groups_users WHERE groupid = ' + groupData.groupId + ' AND userid <> ' + groupData.userId, (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      const partnerId = results.rows[0].userid;
+      pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id WHERE allergies_detusers.user_id = ' + partnerId, (error, results) => {
+        if (error) {
+          console.warn(error);
+          response.status(500).json({ message: 'errore query' })
+        } else {
+          const partnerAllergies = results.rows
+          // Risposta contenente intolleranze del partner
+          res.json(partnerAllergies);
+        }
+      })
+    }
+  })
+};
+
+const updateFoodAllergies = (request, response) => {
+  const { userAllergy } = request.body;
+
+  pool.query('INSERT INTO allergies_detusers (allergy_id, user_id, allergy_name) VALUES ($1, $2, $3)',
+    [userAllergy.allergyId, userAllergy.userId, userAllergy.allergyName], (error) => {
+      if (error) {
+        console.log(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        console.log("Intolleranza aggiunta")
+        response.status(200).send();
+      }
+    }
+  )
+};
+
+const deleteFoodAllergies = (request, response) => {
+  const { userAllergy } = request.body;
+  pool.query('DELETE FROM allergies_detusers WHERE allergy_id = $1 AND user_id = $2 AND allergy_name = $3',
+    [userAllergy.allergyId, userAllergy.userId, userAllergy.allergyName], (error) => {
+      if (error) {
+        console.log(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        console.log("Intolleranza eliminata")
+        response.status(200).send();
+      }
+    }
+  )
 };
 
 const login = (req, res) => {
@@ -658,7 +726,26 @@ app
 app
   .route('/getFoodAllergies')
   .get(getFoodAllergies)
-  .post(getFoodAllergies) //POST endpoint to get badges list
+
+//getUserFoodAllergies
+app
+  .route('/getUserFoodAllergies')
+  .post(getUserFoodAllergies)
+
+//getPartnerFoodAllergies
+app
+  .route('/getPartnerFoodAllergies')
+  .post(getPartnerFoodAllergies)
+
+//updateFoodAllergies
+app
+  .route('/updateFoodAllergies')
+  .post(updateFoodAllergies) //POST endpoint to post food allergies
+
+//deleteFoodAllergies
+app
+  .route('/deleteFoodAllergies')
+  .post(deleteFoodAllergies) //POST endpoint to delete food allergies
 
 //Login
 app.post('/login', login);
