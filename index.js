@@ -195,27 +195,19 @@ const getUserFoodAllergies = (req, res) => {
 
 const getPartnerFoodAllergies = (req, res) => {
   const groupData = req.body;
-  pool.query('SELECT userid FROM groups_users WHERE groupid = ' + groupData.groupId + ' AND userid <> ' + groupData.userId, (error, results) => {
+  pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id INNER JOIN groups_users ON allergies_detusers.user_id = groups_users.userid WHERE groupid = ' + groupData.groupId + ' AND userid <> ' + groupData.userId, (error, results) => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' })
     } else {
-      const partnerId = results.rows[0].userid;
-      pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id WHERE allergies_detusers.user_id = ' + partnerId, (error, results) => {
-        if (error) {
-          console.warn(error);
-          response.status(500).json({ message: 'errore query' })
-        } else {
-          const partnerAllergies = results.rows
-          // Risposta contenente intolleranze del partner
-          res.json(partnerAllergies);
-        }
-      })
+      const partnerAllergies = results.rows
+      // Risposta contenente intolleranze del partner
+      res.json(partnerAllergies);
     }
   })
 };
 
-const updateFoodAllergies = (request, response) => {
+const insertFoodAllergies = (request, response) => {
   const { userAllergy } = request.body;
 
   pool.query('INSERT INTO allergies_detusers (allergy_id, user_id, allergy_name) VALUES ($1, $2, $3)',
@@ -739,8 +731,8 @@ app
 
 //updateFoodAllergies
 app
-  .route('/updateFoodAllergies')
-  .post(updateFoodAllergies) //POST endpoint to post food allergies
+  .route('/insertFoodAllergies')
+  .post(insertFoodAllergies) //POST endpoint to post food allergies
 
 //deleteFoodAllergies
 app
