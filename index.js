@@ -155,14 +155,63 @@ const updateUser = (req, res) => {
   })
 };
 
-const getBadges = (request, response) => {
-  pool.query('SELECT * FROM badges', (error, results) => {
+// Ottengo tutti i badge + le eventuali descrizioni/foto della fase corrente se il progress del badge è ==! null
+const getUserBadges = (req, res) => {
+  const { userId } = req.body;
+  pool.query('SELECT badges.badge_id, COALESCE(badges_detphase.description, badges.description) AS description, COALESCE(badges_detphase.badge_photo, badges.badge_photo) AS badge_photo, badges_detusers.progress, badges_detphase.phase FROM badges LEFT JOIN badges_detusers ON badges.badge_id = badges_detusers.badge_id AND user_id = ' + userId + 'LEFT JOIN badges_detphase ON badges.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress ORDER BY badge_id ', (error, results) => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' })
     } else {
-      console.log("Ecco i badges")
-      response.status(200).json(results.rows)
+      const userBadges = results.rows
+      // Risposta contenente badges utente
+      res.json(userBadges);
+    }
+  })
+};
+
+// Aggiunge il badge in badges_detusers se non esiste, altrimenti lo aggiorna
+const insertUserBadge = (req, res) => {
+  const userData = req.body;
+  console.log(userData)
+  pool.query('INSERT INTO badges_detusers (user_id, badge_id, progress) VALUES ($1, $2, 1) ON CONFLICT (user_id, badge_id) DO UPDATE SET progress = badges_detusers.progress + 1', [userData.user_id, userData.badge_id], (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      console.log("Badge aggiunto")
+      res.status(200).send();
+    }
+  })
+};
+
+// Restituisce solo i badge del partner presenti in badges_detphase (ovvero che hanno almeno fase 1)
+const getPartnerBadges = (req, res) => {
+  const groupData = req.body;
+  console.log(groupData)
+  pool.query('SELECT badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description, badges_detphase.phase FROM badges_detusers INNER JOIN groups_users ON groups_users.userid = badges_detusers.user_id INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE groups_users.groupid = ' + groupData.groupId + 'AND groups_users.userid <> ' + groupData.userId + 'ORDER BY badge_id', (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      const partnerBadges = results.rows
+      // Risposta contenente i badges del partner
+      res.json(partnerBadges);
+    }
+  })
+};
+
+// Restituisce solo i badge del contatto presenti in badges_detphase (ovvero che hanno almeno fase 1)
+const getContactBadges = (req, res) => {
+  const { userId } = req.body;
+  pool.query('SELECT badges_detusers.badge_id, badges_detphase.badge_photo FROM badges_detusers INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE badges_detusers.user_id = ' + userId + 'ORDER BY badge_id', (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      const contactBadges = results.rows
+      // Risposta contenente i badges del contatto
+      res.json(contactBadges);
     }
   })
 };
@@ -762,10 +811,25 @@ app
   .route('/existsUser')
   .post(checkUserExists)
 
-//GetBadges
+//getUserBadges
 app
-  .route('/getBadges')
-  .get(getBadges)
+  .route('/getUserBadges')
+  .post(getUserBadges) //POST endpoint to get badges list
+
+//insertUserBadge
+app
+  .route('/insertUserBadge')
+  .post(insertUserBadge) //POST endpoint to insert or update a badge
+
+//getPartnerBadges
+app
+  .route('/getPartnerBadges')
+  .post(getPartnerBadges) //POST endpoint to get partner badges
+
+//getContactBadges
+app
+  .route('/getContactBadges')
+  .post(getContactBadges) //POST endpoint to get contact badges
 
 //GetFoodAllergies
 app
