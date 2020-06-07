@@ -1,4 +1,5 @@
 //--------Dependencies-------//
+
 const express = require('express')
 const bodyParser = require('body-parser')
 const cors = require('cors')
@@ -7,8 +8,8 @@ const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
 var serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-075efce3ba.json");
 
-
 //--------Initialization--------//
+
 const app = express()
 const accessTokenSecret = 'carloebbasta';
 const refreshTokenSecret = 'refreshcarloebbasta';
@@ -57,7 +58,7 @@ const authenticateJWT = (req, res, next) => {
 const rollback = function (pool, response, err) { // Funzione che esegue la rollback dall'ultima begin
   console.log(err);
   pool.query('ROLLBACK', function () {
-    response.status(500).json({ message: 'errore query, fatto rollback' })
+    response.status(500).json({ message: 'errore durante il rollback' })
   });
 };
 
@@ -608,29 +609,82 @@ const leaveGroup = (request, response) => {
 };
 
 const getDinners = (request, response) => {
-  //TODO
+  console.log("GetDinners - User: " + request.user.userid);
+  const dinnersResult = {};
+  let myDinnerId = 0; // Id della cena a cui partecipo
+
+  // 1 - MyDinner
+  pool.query('SELECT * FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE groups_users.userid = ' + request.user.userid,
+    (error, results) => {
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        if (results.rows.length > 0) {
+          // Scelto di selezionare la prima cena di cui fa parte l'utente,
+          // anche se teoricamente non può far parte di più cene contemporaneamente
+          console.log("MyDinner: ");
+          console.log(results.rows);
+          myDinnerId = results.rows[0].dinnerid;
+          const _dinner = {
+            id: results.rows[0].dinnerid,
+            title: results.rows[0].dinner_title,
+            description: results.rows[0].dinner_description,
+            type: results.rows[0].dinner_type,
+            date: results.rows[0].dinner_date,
+            administrator: results.rows[0].dinner_administrator
+          }
+          dinnersResult.myDinner = _dinner;
+        }
+
+        // 2 - OtherDinners
+        pool.query('SELECT * FROM dinners WHERE dinnerid <> ' + myDinnerId,
+          (error, results) => {
+            if (error) {
+              console.warn(error);
+              response.status(500).json({ message: 'errore query' })
+            } else {
+              dinnersResult.otherDinners = [];
+              for (var i = 0; i < results.rows.length; i++) {
+                const _dinner = {
+                  id: results.rows[i].dinnerid,
+                  title: results.rows[i].dinner_title,
+                  description: results.rows[i].dinner_description,
+                  type: results.rows[i].dinner_type,
+                  date: results.rows[i].dinner_date,
+                  administrator: results.rows[i].dinner_administrator
+                }
+                dinnersResult.otherDinners.push(_dinner);
+              }
+
+              // Ritorno la mia (eventuale) cena e le altre disponibili
+              response.status(200).json(dinnersResult);
+            }
+          });
+      }
+    });
 };
 
 const createDinner = (request, response) => {
-  const { dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
+  const { dinnerTitle, dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
   const userId = request.user.userid;
-  const createdBy = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
   const dinnerId = Math.floor(Math.random() * (100000 - 1)) + 1; // Genero dinnerId random per averlo subito invece che farlo generare al DB
   var userToken;
 
   console.log("Crate dinner - dinnerId: " + dinnerId);
 
   //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
-  pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId, (error, results) => {
-    if (error) {
-      console.log(error);
-      response.status(500).json({ message: 'errore query' })
-    } else {
-      if (results.rows.length > 0) { //Check inserito perchè se l'altro utente fa logout non riesco più a creare la cena
-        userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+  pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId,
+    (error, results) => {
+      if (error) {
+        console.log(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        if (results.rows.length > 0) { //Check inserito perchè se l'altro utente fa logout non riesco più a creare la cena
+          userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+        }
       }
-    }
-  });
+    });
 
   // Gestione inserimento doppio in transazione con eventuale rollback se qualcosa fallisce
   pool.query('BEGIN', function (err) {
@@ -638,8 +692,8 @@ const createDinner = (request, response) => {
       return rollback(pool, response, err);
     }
     // Creo la cena
-    pool.query('INSERT INTO dinners (dinnerid, dinner_type, dinner_date, dinner_description, created_by) VALUES ($1, $2, $3, $4, $5)',
-      [dinnerId, dinnerType, dinnerDate, dinnerDescription, createdBy], (err) => {
+    pool.query('INSERT INTO dinners (dinnerid, dinner_type, dinner_date, dinner_description, dinner_title, administrator) VALUES ($1, $2, $3, $4, $5, $6)',
+      [dinnerId, dinnerType, dinnerDate, dinnerDescription, dinnerTitle, groupId], (err) => {
         if (err) return rollback(pool, response, err);
 
         // Aggiungo il gruppo come primo partecipante della cena
@@ -708,36 +762,35 @@ app
   .route('/existsUser')
   .post(checkUserExists)
 
-//getBadges
+//GetBadges
 app
   .route('/getBadges')
   .get(getBadges)
-  .post(getBadges) //POST endpoint to get badges list
 
-//getFoodAllergies
+//GetFoodAllergies
 app
   .route('/getFoodAllergies')
   .get(getFoodAllergies)
 
-//getUserFoodAllergies
+//GetUserFoodAllergies
 app
   .route('/getUserFoodAllergies')
   .post(getUserFoodAllergies)
 
-//getPartnerFoodAllergies
+//GetPartnerFoodAllergies
 app
   .route('/getPartnerFoodAllergies')
   .post(getPartnerFoodAllergies)
 
-//updateFoodAllergies
+//UpdateFoodAllergies
 app
   .route('/insertFoodAllergies')
-  .post(insertFoodAllergies) //POST endpoint to post food allergies
+  .post(insertFoodAllergies)
 
-//deleteFoodAllergies
+//DeleteFoodAllergies
 app
   .route('/deleteFoodAllergies')
-  .post(deleteFoodAllergies) //POST endpoint to delete food allergies
+  .post(deleteFoodAllergies)
 
 //Login
 app.post('/login', login);
