@@ -913,6 +913,20 @@ const joinDinner = (request, response) => {
     });
 };
 
+const updateDinner = (request, response) => {
+  const { dinnerId, title, description } = request.body;
+
+  // Aggiorno informazioni sulla cena
+  pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId], (error, results) => {
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      response.status(200).send();
+    }
+  })
+};
+
 const runQuery = (request, response) => {
   const query = request.body.query;
 
@@ -1049,6 +1063,7 @@ app
   .route('/dinners')
   .get(authenticateJWT, getDinners)
   .post(authenticateJWT, createDinner)
+  .put(authenticateJWT, updateDinner)
 
 //Leaver dinner
 app
