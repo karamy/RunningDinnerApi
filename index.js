@@ -1061,9 +1061,9 @@ app
 //Dinners
 app
   .route('/dinners')
-  .get(authenticateJWT, getDinners)
-  .post(authenticateJWT, createDinner)
-  .put(authenticateJWT, updateDinner)
+  .get(authenticateJWT, getDinners) // GET endpoint to obtail dinners
+  .post(authenticateJWT, createDinner) // POST endpoint to create dinner
+  .put(authenticateJWT, updateDinner) // PUT endpoint to update dinner
 
 //Leaver dinner
 app
