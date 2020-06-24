@@ -689,7 +689,7 @@ const getDinners = (request, response) => {
         }
 
         // 2 - OtherDinners
-        pool.query('SELECT dinners.*, array_agg(dinners_detgroups.groupid) AS groupid FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid',
+        pool.query('SELECT dinners.*, array_agg(dinners_detgroups.groupid) AS groupid FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinner_date >= NOW() AND dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid ORDER BY dinner_date asc',
           (error, results) => {
             if (error) {
               console.warn(error);
@@ -805,7 +805,7 @@ const createDinner = (request, response) => {
   const dinnerId = Math.floor(Math.random() * (100000 - 1)) + 1; // Genero dinnerId random per averlo subito invece che farlo generare al DB
   var userToken;
 
-  console.log("Crate dinner - dinnerId: " + dinnerId);
+  console.log("Create dinner - dinnerId: " + dinnerId);
 
   //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
   pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId,
@@ -826,7 +826,7 @@ const createDinner = (request, response) => {
       return rollback(pool, response, err);
     }
     // Creo la cena
-    pool.query('INSERT INTO dinners (dinnerid, dinner_type, dinner_date, dinner_description, dinner_title, administrator) VALUES ($1, $2, $3, $4, $5, $6)',
+    pool.query('INSERT INTO dinners (dinnerid, dinner_type, dinner_date, dinner_description, dinner_title, dinner_administrator) VALUES ($1, $2, $3, $4, $5, $6)',
       [dinnerId, dinnerType, dinnerDate, dinnerDescription, dinnerTitle, groupId], (err) => {
         if (err) return rollback(pool, response, err);
 
@@ -854,6 +854,148 @@ const createDinner = (request, response) => {
           });
       });
   });
+};
+
+const leaveDinner = (request, response) => {
+  const { groupId, dinnerId } = request.body;
+  const userId = request.user.userid;
+  var userToken = null; //Token dell'altro utente del mio gruppo
+
+  const sendLeaveDinnerNotification = function (userToken) {
+    if (!userToken) {
+      // L'altro utente non sarà notificato della rimozione dalla cena
+      console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+    } else {
+      // Genero le informazioni da inviare nella notifica
+      const notificationMsgBody = {
+        type: 'updateParams'
+      };
+      // Invio notifica
+      sendNotification(userToken, "Cena abbandonata",
+        "Il tuo gruppo ha abbandonato la cena a cui partecipavi",
+        notificationMsgBody
+      );
+    }
+  };
+
+  console.log("[LeaveDinner] GroupId: " + groupId + " , DinnerId: " + dinnerId);
+
+  //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
+  pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      if (results.rows.length > 0) { // Check inserito perchè se l'altro utente fa logout non riesco più ad abbandonare la cena
+        userToken = results.rows[0]['firebase_token']; // Valorizzo il token dell'altro utente che appartiene al gruppo
+      }
+
+      // Ottengo il numero degli altri gruppi partecipanti alla cena
+      pool.query('SELECT * FROM dinners_detgroups WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' AND dinners_detgroups.groupid <> ' + groupId, (error, results) => {
+        if (error) {
+          console.log(error);
+          response.status(500).json({ message: 'errore query' })
+        } else {
+          pool.query('BEGIN', function (err) {
+            if (err) return rollback(pool, response, err);
+
+            // Rimuovo il gruppo dalla cena
+            pool.query('DELETE FROM dinners_detgroups WHERE groupid = ' + groupId,
+              (error) => {
+                if (error) return rollback(pool, response, error);
+
+                if (results.rows.length == 0) { // Il mio gruppo era l'unico partecipante alla cena, cancello il mio gruppo e la cena
+                  console.log("Un gruppo solo, cancello cena");
+
+                  // Cancello la cena
+                  pool.query('DELETE FROM dinners WHERE dinnerid = ' + dinnerId,
+                    (error) => {
+                      if (error) return rollback(pool, response, error);
+
+                      sendLeaveDinnerNotification(userToken);
+
+                      pool.query('COMMIT', function () {
+                        response.status(200).send();
+                      });
+                    });
+                } else {
+
+                  pool.query('SELECT dinner_administrator FROM dinners WHERE dinnerid = ' + dinnerId, (error, results) => {
+                    if (results.rows[0]['dinner_administrator'] == groupId) {
+                      console.log("Più gruppi e sono amministratore, eleggo nuovo amministratore cena");
+
+                      // Seleziono il nuovo gruppo amministratore della cena prendendo il primo altro gruppo in tabella (dovrebbe essere in ordine di inserimento)
+                      pool.query('UPDATE dinners SET dinner_administrator = (select groupid FROM dinners_detgroups WHERE dinnerid = ' + dinnerId + ' fetch first 1 rows only) WHERE dinnerid = ' + dinnerId,
+                        (error) => {
+                          if (error) return rollback(pool, response, error);
+
+                          sendLeaveDinnerNotification(userToken);
+
+                          pool.query('COMMIT', function () {
+                            response.status(200).send();
+                          });
+                        });
+                    } else {
+                      console.log("Più gruppi e non sono amministratore, abbandono semplicemente");
+
+                      sendLeaveDinnerNotification(userToken);
+
+                      pool.query('COMMIT', function () {
+                        response.status(200).send();
+                      });
+                    }
+
+                  });
+                }
+              });
+          });
+        }
+      });
+    }
+  });
+};
+
+const joinDinner = (request, response) => {
+  const { groupId, dinnerId } = request.body;
+  const userId = request.user.userid;
+  var userToken = null; //Token dell'altro utente del mio gruppo
+
+  console.log("[JoinDinner] GroupId: " + groupId + " , DinnerId: " + dinnerId);
+
+  //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
+  pool.query('SELECT users.firebase_token FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.groupid = ' + groupId + ' AND groups_users.userid <> ' + userId,
+    (error, results) => {
+      if (error) {
+        console.log(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        if (results.rows.length > 0) { //Check inserito perchè se l'altro utente fa logout non riesco più a creare la cena
+          userToken = results.rows[0]['firebase_token']; //Valorizzo il token dell'altro utente che appartiene al gruppo
+        }
+
+        // Aggiungo il gruppo alla cena
+        pool.query('INSERT INTO dinners_detgroups (dinnerid, groupid) VALUES ($1, $2)',
+          [dinnerId, groupId], (err) => {
+
+            if (!userToken) {
+              // L'altro utente non sarà notificato della rimozione dalla cena
+              console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+            } else {
+              // Genero le informazioni da inviare nella notifica
+              const notificationMsgBody = {
+                type: 'updateParams'
+              };
+              // Invio notifica
+              sendNotification(userToken, "Cena abbandonata",
+                "Il tuo gruppo ha abbandonato la cena a cui partecipavi",
+                notificationMsgBody
+              );
+            }
+
+            response.status(201).send();
+          });
+      }
+    });
 };
 
 // Funzione che calcola la distanza media tra gli utenti partecipanti alla cena e lo user
@@ -948,32 +1090,32 @@ app
 //UpdateUser
 app
   .route('/updateUser')
-  .post(updateUser) //POST endpoint to update user
+  .post(updateUser)
 
 //ExistsUser
 app
   .route('/existsUser')
   .post(checkUserExists)
 
-//getUserBadges
+//GetUserBadges
 app
   .route('/getUserBadges')
-  .post(getUserBadges) //POST endpoint to get badges list
+  .post(getUserBadges)
 
-//insertUserBadge
+//InsertUserBadge
 app
   .route('/insertUserBadge')
-  .post(insertUserBadge) //POST endpoint to insert or update a badge
+  .post(insertUserBadge)
 
-//getPartnerBadges
+//GetPartnerBadges
 app
   .route('/getPartnerBadges')
-  .post(getPartnerBadges) //POST endpoint to get partner badges
+  .post(getPartnerBadges)
 
-//getContactBadges
+//GetContactBadges
 app
   .route('/getContactBadges')
-  .post(getContactBadges) //POST endpoint to get contact badges
+  .post(getContactBadges)
 
 //GetFoodAllergies
 app
@@ -1056,6 +1198,16 @@ app
 app
   .route('/getDinnerDetails')
   .post(authenticateJWT, getDinnerDetails)
+
+//Leaver dinner
+app
+  .route('/leaveDinner')
+  .post(authenticateJWT, leaveDinner)
+
+//Join dinner
+app
+  .route('/joinDinner')
+  .post(authenticateJWT, joinDinner)
 
 //RunQuery
 app
