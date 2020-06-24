@@ -1070,7 +1070,7 @@ const updateDinner = (request, response) => {
       response.status(500).json({ message: 'errore query' })
     } else {
       // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
-
+      // TODO
 
       response.status(200).send();
     }
