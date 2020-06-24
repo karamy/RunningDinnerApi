@@ -689,7 +689,7 @@ const getDinners = (request, response) => {
         }
 
         // 2 - OtherDinners
-        pool.query('SELECT dinners.*, array_agg(dinners_detgroups.groupid) AS groupid FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinner_date >= NOW() AND dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid ORDER BY dinner_date asc',
+        pool.query('SELECT dinners.*, array_agg(dinners_detgroups.groupid) AS groupid FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinner_date >= NOW() AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid ORDER BY dinner_date asc',
           (error, results) => {
             if (error) {
               console.warn(error);
