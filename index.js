@@ -6,7 +6,7 @@ const cors = require('cors')
 const { pool } = require('./config')
 const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
-var serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-075efce3ba.json");
+const serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-075efce3ba.json");
 const { Client, Status } = require("@googlemaps/google-maps-services-js");
 
 //--------Initialization--------//
@@ -33,6 +33,8 @@ admin.initializeApp({
 });
 
 console.warn("App Avviata: versione " + process.env.VERSION);
+
+//--------Utility Functions-------//
 
 // Authorization Middleware
 const authenticateJWT = (req, res, next) => {
@@ -91,6 +93,65 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
       console.log('Errore invio notifica:', error);
     });
 };
+
+// Funzione che calcola la distanza media tra gli utenti partecipanti alla cena e lo user
+const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
+  var origin;
+  var index;
+  var avgDistance;
+
+  /* Controllo se lo user fa parte della cena (myDinner) o meno (otherDinners) ed imposto l'origine del percorso:
+  - Primo utente dell'array nel caso di myDinner
+  - userAddress nel caso di otherDinners */
+  if (dinnerUserIds.includes(userId) === true) {
+    origin = results[0].address;
+    index = 1;
+  } else {
+    origin = userAddress;
+    index = 0;
+  }
+
+  /* Imposto le tappe del percorso calcolato:
+  - Tutti gli utenti meno il primo nel caso di myDinner
+  - Tutti gli utenti nel caso di otherDinners */
+  const waypoints = [];
+  for (let i = index; i < results.length; i++) {
+    waypoints.push(results[i].address)
+  }
+  return new Promise(function (resolve, reject) {
+    const client = new Client({});
+    client
+      .directions({
+        params: {
+          origin: origin,
+          destination: origin,
+          waypoints: waypoints,
+          key: "AIzaSyD18at-7iHsmjzYgGyAIrvysftwnkyK12o"
+        },
+        timeout: 1000,
+      })
+      .then((r) => {
+        var distance = 0;
+        // Calcolo la distanza totale del percorso eliminando "km" che la API restituisce in automatico
+        for (let k = 0; k < r.data.routes[0].legs.length; k++) {
+          r.data.routes[0].legs[k].distance.text = r.data.routes[0].legs[k].distance.text.match(/\d+/)[0]
+          distance = distance + Number(r.data.routes[0].legs[k].distance.text)
+        };
+
+        // Calcolo la distanza media
+        if (index === 1) {
+          avgDistance = Math.round(distance / results.length)
+        } else {
+          avgDistance = Math.round(distance / (results.length + 1))
+        }
+        resolve(avgDistance)
+      })
+      .catch((e) => {
+        console.log('Richiesta fallita, errore: ' + e);
+        reject()
+      });
+  });
+}
 
 //--------Routes Functions-------//
 
@@ -156,7 +217,7 @@ const updateUser = (req, res) => {
   })
 };
 
-// Ottengo tutti i badge + le eventuali descrizioni/foto della fase corrente se il progress del badge è ==! null
+// Ottengo tutti i badge più le eventuali descrizioni/foto della fase corrente se il progress del badge è ==! null
 const getUserBadges = (req, res) => {
   const { userId } = req.body;
   pool.query('SELECT badges.badge_id, COALESCE(badges_detphase.description, badges.description) AS description, COALESCE(badges_detphase.badge_photo, badges.badge_photo) AS badge_photo, badges_detusers.progress, badges_detphase.phase FROM badges LEFT JOIN badges_detusers ON badges.badge_id = badges_detusers.badge_id AND user_id = ' + userId + 'LEFT JOIN badges_detphase ON badges.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress ORDER BY badge_id ', (error, results) => {
@@ -1000,6 +1061,7 @@ const joinDinner = (request, response) => {
 
 const updateDinner = (request, response) => {
   const { dinnerId, title, description } = request.body;
+  const userId = request.user.userid;
 
   // Aggiorno informazioni sulla cena
   pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId], (error, results) => {
@@ -1007,69 +1069,13 @@ const updateDinner = (request, response) => {
       console.warn(error);
       response.status(500).json({ message: 'errore query' })
     } else {
+      // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
+
+
       response.status(200).send();
     }
   })
 };
-
-// Funzione che calcola la distanza media tra gli utenti partecipanti alla cena e lo user
-const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
-  var origin;
-  var index;
-  var avgDistance;
-
-  /* Controllo se lo user fa parte della cena (myDinner) o meno (otherDinners) ed imposto l'origine del percorso:
-  - Primo utente dell'array nel caso di myDinner
-  - userAddress nel caso di otherDinners */
-  if (dinnerUserIds.includes(userId) === true) {
-    origin = results[0].address;
-    index = 1;
-  } else {
-    origin = userAddress;
-    index = 0;
-  }
-
-  /* Imposto le tappe del percorso calcolato:
-  - Tutti gli utenti meno il primo nel caso di myDinner
-  - Tutti gli utenti nel caso di otherDinners */
-  const waypoints = [];
-  for (let i = index; i < results.length; i++) {
-    waypoints.push(results[i].address)
-  }
-  return new Promise(function (resolve, reject) {
-    const client = new Client({});
-    client
-      .directions({
-        params: {
-          origin: origin,
-          destination: origin,
-          waypoints: waypoints,
-          key: "AIzaSyD18at-7iHsmjzYgGyAIrvysftwnkyK12o"
-        },
-        timeout: 1000,
-      })
-      .then((r) => {
-        var distance = 0;
-        // Calcolo la distanza totale del percorso eliminando "km" che la API restituisce in automatico
-        for (let k = 0; k < r.data.routes[0].legs.length; k++) {
-          r.data.routes[0].legs[k].distance.text = r.data.routes[0].legs[k].distance.text.match(/\d+/)[0]
-          distance = distance + Number(r.data.routes[0].legs[k].distance.text)
-        };
-
-        // Calcolo la distanza media
-        if (index === 1) {
-          avgDistance = Math.round(distance / results.length)
-        } else {
-          avgDistance = Math.round(distance / (results.length + 1))
-        }
-        resolve(avgDistance)
-      })
-      .catch((e) => {
-        console.log('Richiesta fallita, errore: ' + e);
-        reject()
-      });
-  });
-}
 
 const runQuery = (request, response) => {
   const query = request.body.query;
