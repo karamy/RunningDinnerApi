@@ -65,7 +65,7 @@ const rollback = function (pool, response, err) { // Funzione che esegue la roll
   });
 };
 
-// Funzione che invia una notifica push
+// Funzione che invia una o più notifiche push
 const sendNotification = function (userToken, notificationTitle, notificationBody, notificationData) {
   // Genero le informazioni da inviare nella notifica
   const notificationMsg = {
@@ -80,18 +80,29 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
       notification: {
         sound: "default"
       }
-    },
-    token: userToken
+    }
   };
 
-  // Invio notifica tramite Firebase Admin
-  admin.messaging().send(notificationMsg)
-    .then((firebaseResponse) => {
-      console.log('Notifica inviata con successo');
-    })
-    .catch((error) => {
-      console.log('Errore invio notifica:', error);
-    });
+  // Invio notifica tramite Firebase Admin, lanciando una delle due funzioni se il parametro è un array
+  if (Array.isArray(userToken)) {
+    notificationMsg.tokens = userToken;
+    admin.messaging().sendMulticast(notificationMsg)
+      .then((firebaseResponse) => {
+        console.log('Notifiche multiple inviate con successo');
+      })
+      .catch((error) => {
+        console.log('Errore invio notifiche multiple:', error);
+      });
+  } else {
+    notificationMsg.token = userToken;
+    admin.messaging().send(notificationMsg)
+      .then((firebaseResponse) => {
+        console.log('Notifica inviata con successo');
+      })
+      .catch((error) => {
+        console.log('Errore invio notifica:', error);
+      });
+  }
 };
 
 // Funzione che calcola la distanza media tra gli utenti partecipanti alla cena e lo user
@@ -147,7 +158,7 @@ const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
         resolve(avgDistance)
       })
       .catch((e) => {
-        console.log('Richiesta fallita, errore: ' + e);
+        console.log('Richiesta fallita, errore: ', e);
         reject()
       });
   });
@@ -698,7 +709,7 @@ const leaveGroup = (request, response) => {
             if (!userToken) {
               // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo,
               // lascio comunque proseguire, ma l'altro utente non sarà notificato
-              console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+              console.warn('LeaveGroup - Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
             } else {
               // Genero le informazioni da inviare nella notifica
               const notificationMsgBody = {
@@ -821,37 +832,48 @@ const getDinnerDetails = (request, response) => {
                 dinnerDetails.foodAllergies.push(_foodAllergies);
               }
 
-              // 3 - UsersData
-              pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
+              // 3 - DinnerData
+              pool.query('SELECT dinner_title as title, dinner_description as description FROM dinners WHERE dinnerid = ' + dinnerId,
                 (error, results) => {
                   if (error) {
                     console.warn(error);
                     response.status(500).json({ message: 'errore query' })
                   } else {
-                    dinnerDetails.usersData = [];
-                    dinnerUsersIds = [];
-                    for (var i = 0; i < results.rows.length; i++) {
-                      const _usersData = {
-                        userId: results.rows[i].userid,
-                        name: results.rows[i].name,
-                        address: results.rows[i].address,
-                        birth_date: results.rows[i].birth_date,
-                        profilePhoto: results.rows[i].profile_photo
-                      }
-                      dinnerDetails.usersData.push(_usersData);
-                      dinnerUsersIds.push(_usersData.userId)
-                    }
-                    const userId = request.body.userId;
-                    const userAddress = request.body.userAddress;
-                    calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
-                      dinnerDetails.avgDistance = res
-                      response.status(200).json(dinnerDetails);
-                    },
-                      () => {
-                        console.log("Errore in calcDistance")
-                        dinnerDetails.avgDistance = "Errore"
-                        response.status(200).json(dinnerDetails);
-                      })
+                    dinnerDetails.dinnerData = results.rows[0];
+
+                    // 4 - UsersData
+                    pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
+                      (error, results) => {
+                        if (error) {
+                          console.warn(error);
+                          response.status(500).json({ message: 'errore query' })
+                        } else {
+                          dinnerDetails.usersData = [];
+                          dinnerUsersIds = [];
+                          for (var i = 0; i < results.rows.length; i++) {
+                            const _usersData = {
+                              userId: results.rows[i].userid,
+                              name: results.rows[i].name,
+                              address: results.rows[i].address,
+                              birth_date: results.rows[i].birth_date,
+                              profilePhoto: results.rows[i].profile_photo
+                            }
+                            dinnerDetails.usersData.push(_usersData);
+                            dinnerUsersIds.push(_usersData.userId)
+                          }
+                          const userId = request.body.userId;
+                          const userAddress = request.body.userAddress;
+                          calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
+                            dinnerDetails.avgDistance = res
+                            response.status(200).json(dinnerDetails);
+                          },
+                            () => { // Se errore nel calcolo delle distanze ritorno comunque esito positivo
+                              console.log("Errore in calcDistance")
+                              dinnerDetails.avgDistance = "Errore"
+                              response.status(200).json(dinnerDetails);
+                            });
+                        }
+                      });
                   }
                 });
             }
@@ -925,7 +947,7 @@ const leaveDinner = (request, response) => {
   const sendLeaveDinnerNotification = function (userToken) {
     if (!userToken) {
       // L'altro utente non sarà notificato della rimozione dalla cena
-      console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+      console.warn('LeaveDinner - Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
     } else {
       // Genero le informazioni da inviare nella notifica
       const notificationMsgBody = {
@@ -1040,7 +1062,7 @@ const joinDinner = (request, response) => {
 
             if (!userToken) {
               // L'altro utente non sarà notificato della rimozione dalla cena
-              console.warn('Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
+              console.warn('JoinDinner - Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
             } else {
               // Genero le informazioni da inviare nella notifica
               const notificationMsgBody = {
@@ -1064,17 +1086,37 @@ const updateDinner = (request, response) => {
   const userId = request.user.userid;
 
   // Aggiorno informazioni sulla cena
-  pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId], (error, results) => {
-    if (error) {
-      console.warn(error);
-      response.status(500).json({ message: 'errore query' })
-    } else {
-      // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
-      // TODO
+  pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId],
+    (error, results) => {
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
+        pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON groups_users.groupid = dinners_detgroups.groupid WHERE dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' AND users.userid <> ' + userId,
+          (error, results) => {
+            const userTokens = [];
+            for (var i = 0; i < results.rows.length; i++) {
+              if (results.rows[i]['firebase_token']) {
+                userTokens.push(results.rows[i]['firebase_token']);
+              }
+            }
 
-      response.status(200).send();
-    }
-  })
+            // Genero le informazioni da inviare nella notifica
+            const notificationMsgBody = {
+              type: 'updateParams'
+            };
+
+            // Invio notifiche
+            sendNotification(userTokens, "Cena modificata",
+              "La cena a cui partecipi è stata modificata",
+              notificationMsgBody
+            );
+
+            response.status(200).send();
+          });
+      }
+    })
 };
 
 const runQuery = (request, response) => {
