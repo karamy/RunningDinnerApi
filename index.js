@@ -94,7 +94,7 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
     });
 };
 
-// Funzione che calcola la distanza media tra gli utenti partecipanti alla cena e lo user
+// Funzione che calcola la distanza media tra gli utenti partecipanti (group_address) alla cena e lo user
 const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
   var origin;
   var index;
@@ -104,7 +104,7 @@ const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
   - Primo utente dell'array nel caso di myDinner
   - userAddress nel caso di otherDinners */
   if (dinnerUserIds.includes(userId) === true) {
-    origin = results[0].address;
+    origin = results[0].group_address;
     index = 1;
   } else {
     origin = userAddress;
@@ -116,7 +116,7 @@ const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
   - Tutti gli utenti nel caso di otherDinners */
   const waypoints = [];
   for (let i = index; i < results.length; i++) {
-    waypoints.push(results[i].address)
+    waypoints.push(results[i].group_address)
   }
   return new Promise(function (resolve, reject) {
     const client = new Client({});
@@ -822,7 +822,7 @@ const getDinnerDetails = (request, response) => {
               }
 
               // 3 - UsersData
-              pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
+              pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, groups_users.group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
                 (error, results) => {
                   if (error) {
                     console.warn(error);
@@ -832,11 +832,13 @@ const getDinnerDetails = (request, response) => {
                     dinnerUsersIds = [];
                     for (var i = 0; i < results.rows.length; i++) {
                       const _usersData = {
+                        groupid: results.rows[i].groupid,
                         userId: results.rows[i].userid,
                         name: results.rows[i].name,
                         address: results.rows[i].address,
+                        group_address: results.rows[i].group_address,
                         birth_date: results.rows[i].birth_date,
-                        profilePhoto: results.rows[i].profile_photo
+                        profile_photo: results.rows[i].profile_photo
                       }
                       dinnerDetails.usersData.push(_usersData);
                       dinnerUsersIds.push(_usersData.userId)
@@ -859,6 +861,29 @@ const getDinnerDetails = (request, response) => {
       }
     });
 };
+
+const getDinnerDishes = (request, res) => {
+  const { dinnerId } = request.body;
+  const dinnerDishes = [];
+
+  // Ottengo quali piatti devono preparare i vari gruppi partecipanti alla cena
+  pool.query('SELECT * FROM dinners_detdishes WHERE dinnerid = ' + dinnerId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      for (var i = 0; i < results.rows.length; i++) {
+        const _groupDish = {
+          groupId: results.rows[i].groupid,
+          dishId: results.rows[i].dishid
+        }
+        dinnerDishes.push(_groupDish);
+      }
+      // Risposta contenente dishes
+      res.status(200).json(dinnerDishes);
+    }
+  });
+}
 
 const createDinner = (request, response) => {
   const { dinnerTitle, dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
@@ -1219,6 +1244,11 @@ app
 app
   .route('/getDinnerDetails')
   .post(authenticateJWT, getDinnerDetails)
+
+//Dinner dishes
+app
+  .route('/getDinnerDishes')
+  .post(authenticateJWT, getDinnerDishes)
 
 //Leaver dinner
 app
