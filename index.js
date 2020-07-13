@@ -942,9 +942,10 @@ const createDinner = (request, response) => {
 const leaveDinner = (request, response) => {
   const { groupId, dinnerId } = request.body;
   const userId = request.user.userid;
-  var userToken = null; //Token dell'altro utente del mio gruppo
+  var groupUserToken = null; //Token dell'altro utente del mio gruppo
 
-  const sendLeaveDinnerNotification = function (userToken) {
+  // Invia notifica all'altro partecipante al gruppo
+  const sendLeaveDinnerNotificationToGroup = function (userToken) {
     if (!userToken) {
       // L'altro utente non sarà notificato della rimozione dalla cena
       console.warn('LeaveDinner - Utente appartenente a gruppo non più abilitato a ricevere notifiche push');
@@ -961,6 +962,25 @@ const leaveDinner = (request, response) => {
     }
   };
 
+  // Invia notifica ai nuovi amministratori della cena
+  const sendLeaveDinnerNotificationToNewAdministrators = function (userTokens) {
+    if (!userTokens.length) {
+      // L'altro gruppo non verrà notificato di essere il nuovo admin
+      console.warn('LeaveDinner - Utenti appartenente a nuovo gruppo amministratore non abilitati a ricevere notifiche push');
+    } else {
+      // Genero le informazioni da inviare nella notifica
+      const notificationMsgBody = {
+        type: 'updateParams'
+      };
+
+      // Invio notifiche
+      sendNotification(userTokens, "Cena modificata",
+        "Sei il nuovo amministratore della cena a cui partecipi",
+        notificationMsgBody
+      );
+    }
+  }
+
   console.log("[LeaveDinner] GroupId: " + groupId + " , DinnerId: " + dinnerId);
 
   //Ottengo il token di chi fa parte del mio gruppo escludendo me stesso
@@ -970,10 +990,10 @@ const leaveDinner = (request, response) => {
       response.status(500).json({ message: 'errore query' })
     } else {
       if (results.rows.length > 0) { // Check inserito perchè se l'altro utente fa logout non riesco più ad abbandonare la cena
-        userToken = results.rows[0]['firebase_token']; // Valorizzo il token dell'altro utente che appartiene al gruppo
+        groupUserToken = results.rows[0]['firebase_token']; // Valorizzo il token dell'altro utente che appartiene al gruppo
       }
 
-      // Ottengo il numero degli altri gruppi partecipanti alla cena
+      // Ottengo gli altri gruppi partecipanti alla cena
       pool.query('SELECT * FROM dinners_detgroups WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' AND dinners_detgroups.groupid <> ' + groupId, (error, results) => {
         if (error) {
           console.log(error);
@@ -982,7 +1002,7 @@ const leaveDinner = (request, response) => {
           pool.query('BEGIN', function (err) {
             if (err) return rollback(pool, response, err);
 
-            // Rimuovo il gruppo dalla cena
+            // Rimuovo il mio gruppo dalla cena
             pool.query('DELETE FROM dinners_detgroups WHERE groupid = ' + groupId,
               (error) => {
                 if (error) return rollback(pool, response, error);
@@ -995,13 +1015,13 @@ const leaveDinner = (request, response) => {
                     (error) => {
                       if (error) return rollback(pool, response, error);
 
-                      sendLeaveDinnerNotification(userToken);
+                      sendLeaveDinnerNotificationToGroup(groupUserToken);
 
                       pool.query('COMMIT', function () {
                         response.status(200).send();
                       });
                     });
-                } else {
+                } else { // Vi sono altri gruppi oltre al mio che partecipano
 
                   pool.query('SELECT dinner_administrator FROM dinners WHERE dinnerid = ' + dinnerId, (error, results) => {
                     if (results.rows[0]['dinner_administrator'] == groupId) {
@@ -1012,16 +1032,29 @@ const leaveDinner = (request, response) => {
                         (error) => {
                           if (error) return rollback(pool, response, error);
 
-                          sendLeaveDinnerNotification(userToken);
+                          sendLeaveDinnerNotificationToGroup(groupUserToken);
 
-                          pool.query('COMMIT', function () {
-                            response.status(200).send();
-                          });
+                          // Ottengo i token dei nuovi amministratori della cena
+                          pool.query('SELECT users.firebase_token, users.name ' + ' FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) ' + ' INNER JOIN dinners ON (dinners.dinner_administrator = groups_users.groupid) ' + ' WHERE dinners.dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' ',
+                            (error, res) => {
+                              const userTokens = [];
+                              for (var i = 0; i < res.rows.length; i++) {
+                                if (res.rows[i]['firebase_token']) {
+                                  userTokens.push(res.rows[i]['firebase_token']);
+                                }
+                              }
+
+                              sendLeaveDinnerNotificationToNewAdministrators(userTokens);
+
+                              pool.query('COMMIT', function () {
+                                response.status(200).send();
+                              });
+                            });
                         });
                     } else {
-                      console.log("Più gruppi e non sono amministratore, abbandono semplicemente");
+                      console.log("Leave Dinner - Più gruppi e non sono amministratore, abbandono semplicemente");
 
-                      sendLeaveDinnerNotification(userToken);
+                      sendLeaveDinnerNotificationToGroup(groupUserToken);
 
                       pool.query('COMMIT', function () {
                         response.status(200).send();
@@ -1108,10 +1141,14 @@ const updateDinner = (request, response) => {
             };
 
             // Invio notifiche
-            sendNotification(userTokens, "Cena modificata",
-              "La cena a cui partecipi è stata modificata",
-              notificationMsgBody
-            );
+            if (userTokens.length) {
+              sendNotification(userTokens, "Cena modificata",
+                "La cena a cui partecipi è stata modificata",
+                notificationMsgBody
+              );
+            } else {
+              console.log("Update Dinner - Nessuno verrà notificato per la modifica alla cena");
+            }
 
             response.status(200).send();
           });
