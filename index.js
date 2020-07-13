@@ -95,17 +95,17 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
       });
   } else {
     notificationMsg.token = userToken;
-    admin.messaging().send(notificationMsg)
-      .then((firebaseResponse) => {
-        console.log('Notifica inviata con successo');
-      })
-      .catch((error) => {
-        console.log('Errore invio notifica:', error);
-      });
+  admin.messaging().send(notificationMsg)
+    .then((firebaseResponse) => {
+      console.log('Notifica inviata con successo');
+    })
+    .catch((error) => {
+      console.log('Errore invio notifica:', error);
+    });
   }
 };
 
-// Funzione che calcola la distanza media tra gli utenti partecipanti alla cena e lo user
+// Funzione che calcola la distanza media tra gli utenti partecipanti (group_address) alla cena e lo user
 const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
   var origin;
   var index;
@@ -115,7 +115,7 @@ const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
   - Primo utente dell'array nel caso di myDinner
   - userAddress nel caso di otherDinners */
   if (dinnerUserIds.includes(userId) === true) {
-    origin = results[0].address;
+    origin = results[0].group_address;
     index = 1;
   } else {
     origin = userAddress;
@@ -127,7 +127,7 @@ const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
   - Tutti gli utenti nel caso di otherDinners */
   const waypoints = [];
   for (let i = index; i < results.length; i++) {
-    waypoints.push(results[i].address)
+    waypoints.push(results[i].group_address)
   }
   return new Promise(function (resolve, reject) {
     const client = new Client({});
@@ -842,45 +842,70 @@ const getDinnerDetails = (request, response) => {
                     dinnerDetails.dinnerData = results.rows[0];
 
                     // 4 - UsersData
-                    pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
-                      (error, results) => {
-                        if (error) {
-                          console.warn(error);
-                          response.status(500).json({ message: 'errore query' })
-                        } else {
-                          dinnerDetails.usersData = [];
-                          dinnerUsersIds = [];
-                          for (var i = 0; i < results.rows.length; i++) {
-                            const _usersData = {
-                              userId: results.rows[i].userid,
-                              name: results.rows[i].name,
-                              address: results.rows[i].address,
-                              birth_date: results.rows[i].birth_date,
-                              profilePhoto: results.rows[i].profile_photo
-                            }
-                            dinnerDetails.usersData.push(_usersData);
-                            dinnerUsersIds.push(_usersData.userId)
-                          }
-                          const userId = request.body.userId;
-                          const userAddress = request.body.userAddress;
-                          calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
-                            dinnerDetails.avgDistance = res
-                            response.status(200).json(dinnerDetails);
-                          },
+              pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, groups_users.group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
+                (error, results) => {
+                  if (error) {
+                    console.warn(error);
+                    response.status(500).json({ message: 'errore query' })
+                  } else {
+                    dinnerDetails.usersData = [];
+                    dinnerUsersIds = [];
+                    for (var i = 0; i < results.rows.length; i++) {
+                      const _usersData = {
+                        groupid: results.rows[i].groupid,
+                        userId: results.rows[i].userid,
+                        name: results.rows[i].name,
+                        address: results.rows[i].address,
+                        group_address: results.rows[i].group_address,
+                        birth_date: results.rows[i].birth_date,
+                        profile_photo: results.rows[i].profile_photo
+                      }
+                      dinnerDetails.usersData.push(_usersData);
+                      dinnerUsersIds.push(_usersData.userId)
+                    }
+                    const userId = request.body.userId;
+                    const userAddress = request.body.userAddress;
+                    calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
+                      dinnerDetails.avgDistance = res
+                      response.status(200).json(dinnerDetails);
+                    },
                             () => { // Se errore nel calcolo delle distanze ritorno comunque esito positivo
-                              console.log("Errore in calcDistance")
-                              dinnerDetails.avgDistance = "Errore"
-                              response.status(200).json(dinnerDetails);
+                        console.log("Errore in calcDistance")
+                        dinnerDetails.avgDistance = "Errore"
+                        response.status(200).json(dinnerDetails);
                             });
-                        }
-                      });
                   }
                 });
             }
           });
       }
     });
+      }
+    });
 };
+
+const getDinnerDishes = (request, res) => {
+  const { dinnerId } = request.body;
+  const dinnerDishes = [];
+
+  // Ottengo quali piatti devono preparare i vari gruppi partecipanti alla cena
+  pool.query('SELECT * FROM dinners_detdishes WHERE dinnerid = ' + dinnerId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      for (var i = 0; i < results.rows.length; i++) {
+        const _groupDish = {
+          groupId: results.rows[i].groupid,
+          dishId: results.rows[i].dishid
+        }
+        dinnerDishes.push(_groupDish);
+      }
+      // Risposta contenente dishes
+      res.status(200).json(dinnerDishes);
+    }
+  });
+}
 
 const createDinner = (request, response) => {
   const { dinnerTitle, dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
@@ -1121,11 +1146,11 @@ const updateDinner = (request, response) => {
   // Aggiorno informazioni sulla cena
   pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId],
     (error, results) => {
-      if (error) {
-        console.warn(error);
-        response.status(500).json({ message: 'errore query' })
-      } else {
-        // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
+    if (error) {
+      console.warn(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
         pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON groups_users.groupid = dinners_detgroups.groupid WHERE dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' AND users.userid <> ' + userId,
           (error, results) => {
             const userTokens = [];
@@ -1150,10 +1175,10 @@ const updateDinner = (request, response) => {
               console.log("Update Dinner - Nessuno verrà notificato per la modifica alla cena");
             }
 
-            response.status(200).send();
+      response.status(200).send();
           });
-      }
-    })
+    }
+  })
 };
 
 const runQuery = (request, response) => {
@@ -1298,6 +1323,11 @@ app
 app
   .route('/getDinnerDetails')
   .post(authenticateJWT, getDinnerDetails)
+
+//Dinner dishes
+app
+  .route('/getDinnerDishes')
+  .post(authenticateJWT, getDinnerDishes)
 
 //Leaver dinner
 app
