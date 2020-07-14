@@ -61,7 +61,7 @@ const authenticateJWT = (req, res, next) => {
 const rollback = function (pool, response, err) { // Funzione che esegue la rollback dall'ultima begin
   console.log(err);
   pool.query('ROLLBACK', function () {
-    response.status(500).json({ message: 'errore durante il rollback' })
+    response.status(500).json({ message: 'errore, effettuo il rollback' })
   });
 };
 
@@ -95,13 +95,13 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
       });
   } else {
     notificationMsg.token = userToken;
-  admin.messaging().send(notificationMsg)
-    .then((firebaseResponse) => {
-      console.log('Notifica inviata con successo');
-    })
-    .catch((error) => {
-      console.log('Errore invio notifica:', error);
-    });
+    admin.messaging().send(notificationMsg)
+      .then((firebaseResponse) => {
+        console.log('Notifica inviata con successo');
+      })
+      .catch((error) => {
+        console.log('Errore invio notifica:', error);
+      });
   }
 };
 
@@ -543,7 +543,7 @@ const compareContacts = (request, response) => {
 };
 
 const inviteGroup = (request, response) => {
-  const { userId: userIdToInvite } = request.body;
+  const { userId: userIdToInvite, contactHouseId: contactHouseId } = request.body;
 
   console.warn("InviteGroup: " + userIdToInvite);
 
@@ -572,7 +572,8 @@ const inviteGroup = (request, response) => {
               const notificationMsgBody = {
                 type: 'confirmGroupInvite',
                 userIdThatInvites: request.user.userid,
-                userNameThatInvites: request.user.name
+                userNameThatInvites: request.user.name,
+                userIdThatInvitesHouse: request.user.userid == contactHouseId
               };
 
               // Invio notifica
@@ -591,9 +592,9 @@ const inviteGroup = (request, response) => {
 };
 
 const inviteGroupConfirm = (request, response) => {
-  const { userId: userIdThatInvites } = request.body;
+  const { userId: userIdThatInvites, contactHouseId: contactHouseId } = request.body;
 
-  console.warn("InviteGroupConfirm: " + userIdThatInvites);
+  console.warn("InviteGroupConfirm: " + userIdThatInvites + " a casa del gruppo " + contactHouseId);
 
   // Verifico che l'utente a cui confermo l'invito non appartenga già ad un gruppo
   pool.query('SELECT count(*) FROM groups_users WHERE userid = ' + userIdThatInvites, (error, results) => {
@@ -607,14 +608,19 @@ const inviteGroupConfirm = (request, response) => {
       } else {
         const sessionUserId = request.user.userid; // Ottengo lo userId dell'utente loggato dalla sessione
         const groupId = '' + sessionUserId + userIdThatInvites; // Genero un groupId concatenando gli userId dei partecipanti
+        let isMyHouse = false;
 
         pool.query('BEGIN', function (err) {
           if (err) return rollback(pool, response, err);
-          pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
-            [groupId, sessionUserId], (err) => {
+
+          isMyHouse = sessionUserId == contactHouseId;
+          pool.query('INSERT INTO groups_users (groupid, userid, house) VALUES ($1, $2, $3)',
+            [groupId, sessionUserId, isMyHouse], (err) => {
               if (err) return rollback(pool, response, err);
-              pool.query('INSERT INTO groups_users (groupid, userid) VALUES ($1, $2)',
-                [groupId, userIdThatInvites], (err) => {
+
+              isMyHouse = userIdThatInvites == contactHouseId;
+              pool.query('INSERT INTO groups_users (groupid, userid, house) VALUES ($1, $2, $3)',
+                [groupId, userIdThatInvites, isMyHouse], (err) => {
                   if (err) return rollback(pool, response, err);
 
                   pool.query('COMMIT', function () {
@@ -842,44 +848,44 @@ const getDinnerDetails = (request, response) => {
                     dinnerDetails.dinnerData = results.rows[0];
 
                     // 4 - UsersData
-              pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, groups_users.group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
-                (error, results) => {
-                  if (error) {
-                    console.warn(error);
-                    response.status(500).json({ message: 'errore query' })
-                  } else {
-                    dinnerDetails.usersData = [];
-                    dinnerUsersIds = [];
-                    for (var i = 0; i < results.rows.length; i++) {
-                      const _usersData = {
-                        groupid: results.rows[i].groupid,
-                        userId: results.rows[i].userid,
-                        name: results.rows[i].name,
-                        address: results.rows[i].address,
-                        group_address: results.rows[i].group_address,
-                        birth_date: results.rows[i].birth_date,
-                        profile_photo: results.rows[i].profile_photo
-                      }
-                      dinnerDetails.usersData.push(_usersData);
-                      dinnerUsersIds.push(_usersData.userId)
-                    }
-                    const userId = request.body.userId;
-                    const userAddress = request.body.userAddress;
-                    calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
-                      dinnerDetails.avgDistance = res
-                      response.status(200).json(dinnerDetails);
-                    },
+                    pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, gu.address as group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = groups_users.groupid WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' ORDER BY users.userid',
+                      (error, results) => {
+                        if (error) {
+                          console.warn(error);
+                          response.status(500).json({ message: 'errore query' })
+                        } else {
+                          dinnerDetails.usersData = [];
+                          dinnerUsersIds = [];
+                          for (var i = 0; i < results.rows.length; i++) {
+                            const _usersData = {
+                              groupid: results.rows[i].groupid,
+                              userId: results.rows[i].userid,
+                              name: results.rows[i].name,
+                              address: results.rows[i].address,
+                              group_address: results.rows[i].group_address,
+                              birth_date: results.rows[i].birth_date,
+                              profile_photo: results.rows[i].profile_photo
+                            }
+                            dinnerDetails.usersData.push(_usersData);
+                            dinnerUsersIds.push(_usersData.userId)
+                          }
+                          const userId = request.body.userId;
+                          const userAddress = request.body.userAddress;
+                          calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
+                            dinnerDetails.avgDistance = res
+                            response.status(200).json(dinnerDetails);
+                          },
                             () => { // Se errore nel calcolo delle distanze ritorno comunque esito positivo
-                        console.log("Errore in calcDistance")
-                        dinnerDetails.avgDistance = "Errore"
-                        response.status(200).json(dinnerDetails);
+                              console.log("Errore in calcDistance")
+                              dinnerDetails.avgDistance = "Errore"
+                              response.status(200).json(dinnerDetails);
                             });
+                        }
+                      });
                   }
                 });
             }
           });
-      }
-    });
       }
     });
 };
@@ -1146,11 +1152,11 @@ const updateDinner = (request, response) => {
   // Aggiorno informazioni sulla cena
   pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId],
     (error, results) => {
-    if (error) {
-      console.warn(error);
-      response.status(500).json({ message: 'errore query' })
-    } else {
-      // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
         pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON groups_users.groupid = dinners_detgroups.groupid WHERE dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' AND users.userid <> ' + userId,
           (error, results) => {
             const userTokens = [];
@@ -1175,10 +1181,10 @@ const updateDinner = (request, response) => {
               console.log("Update Dinner - Nessuno verrà notificato per la modifica alla cena");
             }
 
-      response.status(200).send();
+            response.status(200).send();
           });
-    }
-  })
+      }
+    })
 };
 
 const runQuery = (request, response) => {
