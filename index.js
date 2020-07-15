@@ -95,13 +95,13 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
       });
   } else {
     notificationMsg.token = userToken;
-  admin.messaging().send(notificationMsg)
-    .then((firebaseResponse) => {
-      console.log('Notifica inviata con successo');
-    })
-    .catch((error) => {
-      console.log('Errore invio notifica:', error);
-    });
+    admin.messaging().send(notificationMsg)
+      .then((firebaseResponse) => {
+        console.log('Notifica inviata con successo');
+      })
+      .catch((error) => {
+        console.log('Errore invio notifica:', error);
+      });
   }
 };
 
@@ -672,9 +672,10 @@ const getGroupPartner = (request, res) => {
         userid: partner.userid,
         name: partner.name,
         address: partner.address,
+        group_address: partner.group_address,
         phone_number: partner.phone_number,
         birth_date: partner.birth_date,
-        profile_photo: partner.profile_photo
+        profile_photo: partner.profile_photo,
       });
     }
   });
@@ -842,44 +843,44 @@ const getDinnerDetails = (request, response) => {
                     dinnerDetails.dinnerData = results.rows[0];
 
                     // 4 - UsersData
-              pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, groups_users.group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
-                (error, results) => {
-                  if (error) {
-                    console.warn(error);
-                    response.status(500).json({ message: 'errore query' })
-                  } else {
-                    dinnerDetails.usersData = [];
-                    dinnerUsersIds = [];
-                    for (var i = 0; i < results.rows.length; i++) {
-                      const _usersData = {
-                        groupid: results.rows[i].groupid,
-                        userId: results.rows[i].userid,
-                        name: results.rows[i].name,
-                        address: results.rows[i].address,
-                        group_address: results.rows[i].group_address,
-                        birth_date: results.rows[i].birth_date,
-                        profile_photo: results.rows[i].profile_photo
-                      }
-                      dinnerDetails.usersData.push(_usersData);
-                      dinnerUsersIds.push(_usersData.userId)
-                    }
-                    const userId = request.body.userId;
-                    const userAddress = request.body.userAddress;
-                    calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
-                      dinnerDetails.avgDistance = res
-                      response.status(200).json(dinnerDetails);
-                    },
+                    pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, groups_users.group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY users.userid',
+                      (error, results) => {
+                        if (error) {
+                          console.warn(error);
+                          response.status(500).json({ message: 'errore query' })
+                        } else {
+                          dinnerDetails.usersData = [];
+                          dinnerUsersIds = [];
+                          for (var i = 0; i < results.rows.length; i++) {
+                            const _usersData = {
+                              groupid: results.rows[i].groupid,
+                              userId: results.rows[i].userid,
+                              name: results.rows[i].name,
+                              address: results.rows[i].address,
+                              group_address: results.rows[i].group_address,
+                              birth_date: results.rows[i].birth_date,
+                              profile_photo: results.rows[i].profile_photo
+                            }
+                            dinnerDetails.usersData.push(_usersData);
+                            dinnerUsersIds.push(_usersData.userId)
+                          }
+                          const userId = request.user.userid;
+                          const userAddress = request.body.userAddress;
+                          calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
+                            dinnerDetails.avgDistance = res
+                            response.status(200).json(dinnerDetails);
+                          },
                             () => { // Se errore nel calcolo delle distanze ritorno comunque esito positivo
-                        console.log("Errore in calcDistance")
-                        dinnerDetails.avgDistance = "Errore"
-                        response.status(200).json(dinnerDetails);
+                              console.log("Errore in calcDistance")
+                              dinnerDetails.avgDistance = "Errore"
+                              response.status(200).json(dinnerDetails);
                             });
+                        }
+                      });
                   }
                 });
             }
           });
-      }
-    });
       }
     });
 };
@@ -1113,11 +1114,11 @@ const updateDinner = (request, response) => {
   // Aggiorno informazioni sulla cena
   pool.query('UPDATE dinners SET dinner_title = $1, dinner_description = $2 WHERE dinnerid = $3', [title, description, dinnerId],
     (error, results) => {
-    if (error) {
-      console.warn(error);
-      response.status(500).json({ message: 'errore query' })
-    } else {
-      // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
         pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON groups_users.groupid = dinners_detgroups.groupid WHERE dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' AND users.userid <> ' + userId,
           (error, results) => {
             const userTokens = [];
@@ -1138,10 +1139,10 @@ const updateDinner = (request, response) => {
               notificationMsgBody
             );
 
-      response.status(200).send();
+            response.status(200).send();
           });
-    }
-  })
+      }
+    })
 };
 
 const runQuery = (request, response) => {
