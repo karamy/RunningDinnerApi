@@ -7,7 +7,7 @@ const { pool } = require('./config')
 const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
 const serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-075efce3ba.json");
-const { Client, Status } = require("@googlemaps/google-maps-services-js");
+const { Client } = require("@googlemaps/google-maps-services-js");
 
 //--------Initialization--------//
 
@@ -15,6 +15,7 @@ const app = express()
 const accessTokenSecret = 'carloebbasta';
 const refreshTokenSecret = 'refreshcarloebbasta';
 const H24 = 86400; // Indica i secondi in un giorno
+const MaxAvgDistance = 250; // Indica la massima distanza media (in km) accettabile per potersi iscrivere alla cena
 
 // Elenco di refresh tokens contenenti quelli validi. Dal momento che il refresh token
 // non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
@@ -739,57 +740,116 @@ const leaveGroup = (request, response) => {
 
 const getDinners = (request, response) => {
   console.log("GetDinners - User: " + request.user.userid);
-  const dinnersResult = {};
+
+  const dinnersResult = {
+    otherDinners: []
+  };
   let myDinnerId = 0; // Id della cena a cui partecipo
 
+  // Funzioni per calcolare la distanza in linea d'aria
+  function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+    var R = 6371; // Raggio della terra in km
+    var dLat = deg2rad(lat2 - lat1);
+    var dLon = deg2rad(lon2 - lon1);
+    var a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2)
+      ;
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    var d = R * c; // Distanza in km
+    return d;
+  }
+  function deg2rad(deg) {
+    return deg * (Math.PI / 180)
+  }
+
   // 1 - MyDinner
-  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupid FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
+  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= NOW() GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
     (error, results) => {
       if (error) {
         console.warn(error);
-        response.status(500).json({ message: 'errore query' })
+        response.status(500).json({ message: 'errore query' });
       } else {
         if (results.rows.length > 0) {
           // Scelto di selezionare la prima cena di cui fa parte l'utente,
-          // anche se teoricamente non può far parte di più cene contemporaneamente
-          console.log("MyDinner: ");
-          console.log(results.rows);
-          myDinnerId = results.rows[0].dinnerid;
+          // perchè teoricamente non può far parte di più cene contemporaneamente
           const _dinner = {
             id: results.rows[0].dinnerid,
             title: results.rows[0].dinner_title,
             description: results.rows[0].dinner_description,
             type: results.rows[0].dinner_type,
-            groupIds: results.rows[0].groupid,
+            groupIds: results.rows[0].groupids,
             date: results.rows[0].dinner_date,
             administrator: results.rows[0].dinner_administrator
           }
           dinnersResult.myDinner = _dinner;
+          myDinnerId = results.rows[0].dinnerid; // Memorizzo l'id della cena a cui partecipo per escluderlo nel calcolo di otherDinners
         }
 
         // 2 - OtherDinners
-        pool.query('SELECT dinners.*, array_agg(dinners_detgroups.groupid) AS groupid FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinner_date >= NOW() AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid ORDER BY dinner_date asc',
-          (error, results) => {
+        pool.query('SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.addres_lon]) AS groups_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_date >= NOW() AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc',
+          (error, otherDinnersResults) => {
             if (error) {
               console.warn(error);
-              response.status(500).json({ message: 'errore query' })
+              response.status(500).json({ message: 'errore query' });
             } else {
-              dinnersResult.otherDinners = [];
-              for (var i = 0; i < results.rows.length; i++) {
-                const _dinner = {
-                  id: results.rows[i].dinnerid,
-                  title: results.rows[i].dinner_title,
-                  description: results.rows[i].dinner_description,
-                  type: results.rows[i].dinner_type,
-                  groupIds: results.rows[i].groupid,
-                  date: results.rows[i].dinner_date,
-                  administrator: results.rows[i].dinner_administrator
-                }
-                dinnersResult.otherDinners.push(_dinner);
-              }
+              if (otherDinnersResults.rows.length > 0) {
 
-              // Ritorno la mia (eventuale) cena e le altre disponibili
-              response.status(200).json(dinnersResult);
+                // 2.1 - UserCoordinates, ottengo le coordinate di chi per me mette la casa: 
+                // io se non sono in gruppo, l'owner della casa se sono in gruppo
+                pool.query('SELECT users.name, users.address_lat as mylat, users.addres_lon as mylon, gu_dinners.groupid, gu_dinners.name as ownername, gu_dinners.address_lat as grplat, gu_dinners.addres_lon as grplon FROM users LEFT JOIN groups_users ON users.userid = groups_users.userid LEFT JOIN ( SELECT us.address_lat, us.addres_lon, us.userid, us.name, gu.groupid, us.userid FROM groups_users AS gu INNER JOIN users as us ON gu.userid = us.userid WHERE house = true ) AS gu_dinners ON groups_users.groupid = gu_dinners.groupid WHERE users.userid = ' + request.user.userid,
+                  (error, userCoordsResult) => {
+                    if (error || userCoordsResult.rows.count == 0) {
+                      console.warn(error);
+                      response.status(500).json({ message: 'errore query' });
+                    } else {
+                      console.log(userCoordsResult.rows);
+                      let myLat = userCoordsResult.rows[0].grplat ? userCoordsResult.rows[0].grplat : userCoordsResult.rows[0].mylat;
+                      let myLon = userCoordsResult.rows[0].grplon ? userCoordsResult.rows[0].grplon : userCoordsResult.rows[0].mylon;
+
+                      let _dinnerGroupsLatLonObj = []; // Array di oggetti del tipo [groupId, latitude, longitude] di chi partecipa alla cena
+                      let _groupsTotalDistance = 0; // Distanza totale tra me e i partecipanti
+                      let _distance;
+                      let _mediaDistanze;
+
+                      console.log("myLat", myLat);
+                      console.log("myLon", myLon);
+                      for (var i = 0; i < otherDinnersResults.rows.length; i++) {
+                        _dinnerGroupsLatLonObj = otherDinnersResults.rows[i].groups_coordinates;
+
+                        // Calcolo distanza media tra me e i partecipanti alla cena
+                        _groupsTotalDistance = 0;
+                        for (var j = 0; j < _dinnerGroupsLatLonObj.length; j++) {
+                          _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 1.2, myLat || 0, myLon || 0);
+                          _groupsTotalDistance += _distance;
+                        }
+                        _mediaDistanze = _groupsTotalDistance / j;
+
+                        // Se la distanza è compatibile con il parametro aggiungo la cena all'elenco
+                        console.log("MEDIADIST", otherDinnersResults.rows[i].dinner_title, _mediaDistanze);
+                        if (_mediaDistanze < MaxAvgDistance) {
+                          const _dinner = {
+                            id: otherDinnersResults.rows[i].dinnerid,
+                            title: otherDinnersResults.rows[i].dinner_title,
+                            description: otherDinnersResults.rows[i].dinner_description,
+                            type: otherDinnersResults.rows[i].dinner_type,
+                            groupIds: otherDinnersResults.rows[i].groupids,
+                            date: otherDinnersResults.rows[i].dinner_date,
+                            administrator: otherDinnersResults.rows[i].dinner_administrator
+                          }
+                          dinnersResult.otherDinners.push(_dinner);
+                        }
+                      }
+
+                      // Ritorno la mia cena e le altre disponibili
+                      response.status(200).json(dinnersResult);
+                    }
+                  });
+              } else {
+                // Ritorno la mia cena perchè non ci sono altre cene disponibili
+                response.status(200).json(dinnersResult);
+              }
             }
           });
       }
