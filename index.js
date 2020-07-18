@@ -106,56 +106,38 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
 };
 
 // Funzione che calcola la distanza media tra gli utenti partecipanti (group_address) alla cena e lo user
-const calcDistance = function (results, dinnerUserIds, userId, userAddress) {
-  var origin;
-  var index;
-  var avgDistance;
+const calcDistance = function (userAddress, otherUsersAddresses) {
+  return new Promise(async function (resolve) {
+    let distance = 0;
+    // Per ogni altro group_address presente nella cena calcolo la distanza dallo user
+    for (let i = 0; i < otherUsersAddresses.length; i++) {
+      await getDistance(userAddress, otherUsersAddresses[i]).then(res => {
+        distance = distance + Number(res);
+      })
+    };
 
-  /* Controllo se lo user fa parte della cena (myDinner) o meno (otherDinners) ed imposto l'origine del percorso:
-  - Primo utente dell'array nel caso di myDinner
-  - userAddress nel caso di otherDinners */
-  if (dinnerUserIds.includes(userId) === true) {
-    origin = results[0].group_address;
-    index = 1;
-  } else {
-    origin = userAddress;
-    index = 0;
-  }
+    // Calcolo la distanza media
+    const avgDistance = Math.round(distance / otherUsersAddresses.length);
+    resolve(avgDistance);
+  });
+}
 
-  /* Imposto le tappe del percorso calcolato:
-  - Tutti gli utenti meno il primo nel caso di myDinner
-  - Tutti gli utenti nel caso di otherDinners */
-  const waypoints = [];
-  for (let i = index; i < results.length; i++) {
-    waypoints.push(results[i].group_address)
-  }
+// Funziona che ottiene la distanza tra due indirizzi
+const getDistance = function (userAddress, otherAddress) {
   return new Promise(function (resolve, reject) {
     const client = new Client({});
     client
       .directions({
         params: {
-          origin: origin,
-          destination: origin,
-          waypoints: waypoints,
+          origin: userAddress,
+          destination: otherAddress,
           key: "AIzaSyD18at-7iHsmjzYgGyAIrvysftwnkyK12o"
         },
         timeout: 1000,
       })
       .then((r) => {
-        var distance = 0;
-        // Calcolo la distanza totale del percorso eliminando "km" che la API restituisce in automatico
-        for (let k = 0; k < r.data.routes[0].legs.length; k++) {
-          r.data.routes[0].legs[k].distance.text = r.data.routes[0].legs[k].distance.text.match(/\d+/)[0]
-          distance = distance + Number(r.data.routes[0].legs[k].distance.text)
-        };
-
-        // Calcolo la distanza media
-        if (index === 1) {
-          avgDistance = Math.round(distance / results.length)
-        } else {
-          avgDistance = Math.round(distance / (results.length + 1))
-        }
-        resolve(avgDistance)
+        // Restituisco la distanza senza la stringa "km" presente di default
+        resolve(r.data.routes[0].legs[0].distance.text.match(/\d+\.?\d*/)[0]);
       })
       .catch((e) => {
         console.log('Richiesta fallita, errore: ', e);
@@ -856,7 +838,6 @@ const getDinnerDetails = (request, response) => {
                           response.status(500).json({ message: 'errore query' })
                         } else {
                           dinnerDetails.usersData = [];
-                          dinnerUsersIds = [];
                           for (var i = 0; i < results.rows.length; i++) {
                             const _usersData = {
                               groupid: results.rows[i].groupid,
@@ -868,11 +849,20 @@ const getDinnerDetails = (request, response) => {
                               profile_photo: results.rows[i].profile_photo
                             }
                             dinnerDetails.usersData.push(_usersData);
-                            dinnerUsersIds.push(_usersData.userId)
                           }
-                          const userId = request.user.userid;
                           const userAddress = request.body.userAddress;
-                          calcDistance(results.rows, dinnerUsersIds, userId, userAddress).then(res => {
+                          const userGroupId = request.body.userGroupId;
+                          const otherUsersAddresses = []
+                          const dinnerGroupIds = [];
+
+                          // Creo array contenente i group_address degli altri partecipanti alla cena escluso lo user ed il suo partner
+                          for (let k = 0; k < results.rows.length; k++) {
+                            if (dinnerGroupIds.includes(results.rows[k].groupid) === false && results.rows[k].groupid !== userGroupId) {
+                              otherUsersAddresses.push(results.rows[k].group_address);
+                              dinnerGroupIds.push(results.rows[k].groupid);
+                            };
+                          };
+                          calcDistance(userAddress, otherUsersAddresses).then(res => {
                             dinnerDetails.avgDistance = res
                             response.status(200).json(dinnerDetails);
                           },
