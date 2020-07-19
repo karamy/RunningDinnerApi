@@ -111,9 +111,8 @@ const calcDistance = function (userAddress, otherUsersAddresses) {
     let distance = 0;
     // Per ogni altro group_address presente nella cena calcolo la distanza dallo user
     for (let i = 0; i < otherUsersAddresses.length; i++) {
-      await getDistance(userAddress, otherUsersAddresses[i]).then(res => {
-        distance = distance + Number(res);
-      })
+      res = await getDistance(userAddress, otherUsersAddresses[i]);
+      distance += Number(res);
     };
 
     // Calcolo la distanza media
