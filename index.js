@@ -15,7 +15,7 @@ const app = express()
 const accessTokenSecret = 'carloebbasta';
 const refreshTokenSecret = 'refreshcarloebbasta';
 const H24 = 86400; // Indica i secondi in un giorno
-const MaxAvgDistance = 250; // Indica la massima distanza media (in km) accettabile per potersi iscrivere alla cena
+const MaxAvgDistance = 80; // Indica la massima distanza media (in km) accettabile per potersi iscrivere alla cena
 
 // Elenco di refresh tokens contenenti quelli validi. Dal momento che il refresh token
 // non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
@@ -160,11 +160,11 @@ const getUsers = (request, response) => {
 };
 
 const addUser = (request, response) => {
-  const { name, address, phoneNumber, birthDate, profilePhoto } = request.body
+  const { name, address, phoneNumber, birthDate, profilePhoto, latitude, longitude } = request.body
 
   console.log("Inserimento nuovo utente: " + request.body.name);
 
-  pool.query('INSERT INTO users (name, address, phone_number, birth_date, profile_photo, created_on) VALUES ($1, $2, $3, $4, $5, $6)', [name, address, phoneNumber, birthDate, profilePhoto, new Date()], error => {
+  pool.query('INSERT INTO users (name, address, phone_number, birth_date, profile_photo, created_on, address_lat, address_lon) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [name, address, phoneNumber, birthDate, profilePhoto, new Date(), latitude, longitude], error => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' })
@@ -188,11 +188,14 @@ const checkUserExists = (request, response) => {
 
 const updateUser = (req, res) => {
   const { user } = req.body;
+
+  console.log("UpdateUser - User: " + req.user.userid);
+
   // Aggiorno informazioni dell'utente
-  pool.query('UPDATE users SET name = $1, address = $2, birth_date = $3, profile_photo = $4 WHERE phone_number = $5', [user.name, user.address, user.birth_date, user.profile_photo, user.phone_number], (error, results) => {
+  pool.query('UPDATE users SET name = $1, address = $2, birth_date = $3, profile_photo = $4, address_lat = cast($6 as double precision), address_lon = cast($7 as double precision) WHERE phone_number = $5', [user.name, user.address, user.birth_date, user.profile_photo, user.phone_number, user.latitude, user.longitude], (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       pool.query('SELECT * FROM users WHERE phone_number = $1', [user.phone_number], (error, results) => {
         if (error) {
@@ -529,6 +532,12 @@ const inviteGroup = (request, response) => {
 
   console.warn("InviteGroup: " + userIdToInvite);
 
+  // Check se sto invitando me stesso
+  if (request.user.userid == userIdToInvite) {
+    response.status(400).json({ message: 'Stai invitando te stesso!' });
+    return;
+  }
+
   // Verifico che l'utente da invitare non appartenga già ad un gruppo
   pool.query('SELECT count(*) FROM groups_users WHERE userid = ' + userIdToInvite, (error, results) => {
     if (error) {
@@ -606,37 +615,38 @@ const inviteGroupConfirm = (request, response) => {
                   if (err) return rollback(pool, response, err);
 
                   pool.query('COMMIT', function () {
+
+                    // Ottengo il token dell'utente a cui voglio dare conferma di invito
+                    pool.query('SELECT * FROM users WHERE userid = ' + userIdThatInvites, (error, results) => {
+                      if (error) {
+                        console.log(error);
+                        response.status(500).json({ message: 'errore query' })
+                      } else {
+                        const userToken = results.rows[0]['firebase_token'];
+                        if (!userToken) { // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo, ma l'utente potrebbe aver fatto logout
+                          console.warn('Utente non abilitato a ricevere notifiche push');
+                          response.status(400).json("Utente non abilitato a ricevere notifiche push");
+                        } else {
+                          // Genero le informazioni da inviare nella notifica
+                          const notificationMsgBody = {
+                            type: 'updateParams'
+                          };
+
+                          // Invio notifica
+                          sendNotification(userToken, "Invito confermato",
+                            "L'invito al gruppo è stato confermato",
+                            notificationMsgBody
+                          );
+
+                          response.status(200).send();
+                        }
+                      }
+                    });
+
                     response.status(200).send();
                   });
                 });
             });
-        });
-
-        // Ottengo il token dell'utente a cui voglio dare conferma di invito
-        pool.query('SELECT * FROM users WHERE userid = ' + userIdThatInvites, (error, results) => {
-          if (error) {
-            console.log(error);
-            response.status(500).json({ message: 'errore query' })
-          } else {
-            const userToken = results.rows[0]['firebase_token'];
-            if (!userToken) { // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo, ma l'utente potrebbe aver fatto logout
-              console.warn('Utente non abilitato a ricevere notifiche push');
-              response.status(400).json("Utente non abilitato a ricevere notifiche push");
-            } else {
-              // Genero le informazioni da inviare nella notifica
-              const notificationMsgBody = {
-                type: 'updateParams'
-              };
-
-              // Invio notifica
-              sendNotification(userToken, "Invito confermato",
-                "L'invito al gruppo è stato confermato",
-                notificationMsgBody
-              );
-
-              response.status(200).send();
-            }
-          }
         });
       }
     }
@@ -769,7 +779,7 @@ const getDinners = (request, response) => {
         }
 
         // 2 - OtherDinners
-        pool.query('SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.addres_lon]) AS groups_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_date >= NOW() AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc',
+        pool.query('SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS groups_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_date >= NOW() AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc',
           (error, otherDinnersResults) => {
             if (error) {
               console.warn(error);
@@ -779,7 +789,7 @@ const getDinners = (request, response) => {
 
                 // 2.1 - UserCoordinates, ottengo le coordinate di chi per me mette la casa: 
                 // io se non sono in gruppo, l'owner della casa se sono in gruppo
-                pool.query('SELECT users.name, users.address_lat as mylat, users.addres_lon as mylon, gu_dinners.groupid, gu_dinners.name as ownername, gu_dinners.address_lat as grplat, gu_dinners.addres_lon as grplon FROM users LEFT JOIN groups_users ON users.userid = groups_users.userid LEFT JOIN ( SELECT us.address_lat, us.addres_lon, us.userid, us.name, gu.groupid, us.userid FROM groups_users AS gu INNER JOIN users as us ON gu.userid = us.userid WHERE house = true ) AS gu_dinners ON groups_users.groupid = gu_dinners.groupid WHERE users.userid = ' + request.user.userid,
+                pool.query('SELECT users.name, users.address_lat as mylat, users.address_lon as mylon, gu_dinners.groupid, gu_dinners.name as ownername, gu_dinners.address_lat as grplat, gu_dinners.address_lon as grplon FROM users LEFT JOIN groups_users ON users.userid = groups_users.userid LEFT JOIN ( SELECT us.address_lat, us.address_lon, us.userid, us.name, gu.groupid, us.userid FROM groups_users AS gu INNER JOIN users as us ON gu.userid = us.userid WHERE house = true ) AS gu_dinners ON groups_users.groupid = gu_dinners.groupid WHERE users.userid = ' + request.user.userid,
                   (error, userCoordsResult) => {
                     if (error || userCoordsResult.rows.count == 0) {
                       console.warn(error);
@@ -1270,7 +1280,7 @@ app
 //UpdateUser
 app
   .route('/updateUser')
-  .post(updateUser)
+  .post(authenticateJWT, updateUser)
 
 //ExistsUser
 app
