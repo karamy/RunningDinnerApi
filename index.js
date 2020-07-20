@@ -756,7 +756,7 @@ const getDinners = (request, response) => {
   }
 
   // 1 - MyDinner
-  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= NOW() GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
+  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date > current_date +1 GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
     (error, results) => {
       if (error) {
         console.warn(error);
@@ -779,7 +779,7 @@ const getDinners = (request, response) => {
         }
 
         // 2 - OtherDinners
-        pool.query('SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS groups_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_date >= NOW() AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc',
+        pool.query('SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS groups_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_date > current_date + 1 AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc',
           (error, otherDinnersResults) => {
             if (error) {
               console.warn(error);
