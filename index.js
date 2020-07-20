@@ -756,7 +756,7 @@ const getDinners = (request, response) => {
   }
 
   // 1 - MyDinner
-  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date > current_date +1 GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
+  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= current_date GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
     (error, results) => {
       if (error) {
         console.warn(error);
