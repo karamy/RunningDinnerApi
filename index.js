@@ -16,6 +16,7 @@ const accessTokenSecret = 'carloebbasta';
 const refreshTokenSecret = 'refreshcarloebbasta';
 const H24 = 86400; // Indica i secondi in un giorno
 const MaxAvgDistance = 80; // Indica la massima distanza media (in km) accettabile per potersi iscrivere alla cena
+const ElaboraCeneInterval = 60000; // Indica (in ms) ogni quanto lanciare l'elaborazione delle cene per generare gli eventi cena e lanciare le notifiche per gli eventi che passano di fase
 
 // Elenco di refresh tokens contenenti quelli validi. Dal momento che il refresh token
 // non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
@@ -122,7 +123,7 @@ const calcDistance = function (userAddress, otherUsersAddresses) {
   });
 }
 
-// Funziona che ottiene la distanza tra due indirizzi
+// Funziona che ottiene la distanza (da Maps) tra due indirizzi
 const getDistance = function (userAddress, otherAddress) {
   return new Promise(function (resolve, reject) {
     const client = new Client({});
@@ -144,6 +145,189 @@ const getDistance = function (userAddress, otherAddress) {
         reject()
       });
   });
+}
+
+// Funzioni per calcolare la distanza in linea d'aria
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+  var R = 6371; // Raggio della terra in km
+  var dLat = deg2rad(lat2 - lat1);
+  var dLon = deg2rad(lon2 - lon1);
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2)
+    ;
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  var d = R * c; // Distanza in km
+  return d;
+}
+function deg2rad(deg) {
+  return deg * (Math.PI / 180)
+}
+
+// Funzione che elabora le cene e genera le portate
+const elaboraCene = () => {
+  console.log("Elabora cene - Start");
+
+  // Funzione per ottenere le possibili permutazioni di un array
+  const permute = (xs) => {
+    let ret = [];
+
+    for (let i = 0; i < xs.length; i = i + 1) {
+      let rest = permute(xs.slice(0, i).concat(xs.slice(i + 1)));
+
+      if (!rest.length) {
+        ret.push([xs[i]])
+      } else {
+        for (let j = 0; j < rest.length; j = j + 1) {
+          ret.push([xs[i]].concat(rest[j]))
+        }
+      }
+    }
+    return ret;
+  }
+
+  // Array di paths da confrontare in tutte le possibili combinazioni dell'array di gruppi
+  const dinnerPaths = [
+    [1, 4, 5],
+    [1, 5, 2],
+    [1, 3, 8],
+    [6, 4, 8],
+    [6, 5, 9],
+    [6, 3, 2],
+    [7, 4, 2],
+    [7, 5, 8],
+    [7, 3, 9]
+  ];
+
+  // Recupera le coordinate di un gruppo dall'array di gruppi - coordinate
+  const getLatLongGrp = (groupId, group_coordinates) => {
+    let nullCoordObj = {
+      lat: 0,
+      lon: 0
+    };
+    for (var i = 0; i < group_coordinates.length; i++) {
+      if (group_coordinates[i][0] == groupId) {
+        return {
+          lat: group_coordinates[i][1],
+          lon: group_coordinates[i][2]
+        }
+      }
+    }
+    return nullCoordObj;
+  }
+
+  // Ottiene la distanza di un possibile path della cena
+  const getPathDistance = (dinnerPath, permutation, group_coordinates) => {
+    // Es. DinnerPath: [1, 4, 5]
+    // Es. Permutation [1247, 5556, 2148, 5960, 5352, 3023, 6162, 5146, 4929
+    const coordGrp1 = getLatLongGrp(permutation[dinnerPath[0] - 1], group_coordinates);
+    const coordGrp2 = getLatLongGrp(permutation[dinnerPath[1] - 1], group_coordinates);
+    const coordGrp3 = getLatLongGrp(permutation[dinnerPath[2] - 1], group_coordinates);
+
+    // Distanza 1-4
+    const d1 = getDistanceFromLatLonInKm(coordGrp1.lat, coordGrp1.lon, coordGrp2.lat, coordGrp2.lon);
+    // Distanza 4-5 
+    const d2 = getDistanceFromLatLonInKm(coordGrp2.lat, coordGrp2.lon, coordGrp3.lat, coordGrp3.lon);
+
+    return d1 + d2;
+  };
+
+  const getTotalDistance = (permutation, group_coordinates) => { // Ottiene la distanza totale di una possibile permutazione
+    let totalDistance = 0;
+
+    dinnerPaths.forEach((dinnerPath) => { // Per ogni path
+      totalDistance += getPathDistance(dinnerPath, permutation, group_coordinates);
+    });
+
+    return totalDistance;
+  };
+
+  // Ottengo tutte le cene che superano l'orario attuale e non hanno 
+  // entries in dinners_detPaths
+  pool.query("SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS group_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE gu.house = true AND dinners.dinnerid NOT IN (SELECT dinnerid FROM dinners_detpaths) AND dinner_date <= (SELECT NOW() AT TIME ZONE 'GMT-2') group by dinners.dinnerid", (error, results) => {
+    if (error) {
+      console.error('Elabora cene: errore query', error);
+    } else {
+      let dinnerToElab;
+      let groupCoordinates;
+      let permutations;
+      let groupIds;
+      let totalDistance;
+      let avgDistance;
+      let pathsResult; // Array del tipo [ permutazione, distanza ]
+      let queryArray;
+      let winnerPermutation;
+      let insertQueryText; // Testo della query di insert in dinners_detPaths
+
+      if (results.rows.length == 0) {
+        console.log("Elaborazione cene End - Nessuna cena da elaborare");
+      }
+
+      for (var i = 0; i < results.rows.length; i++) { // Per ogni cena
+        // Ottengo i dati della cena e i gruppi che vi partecipano
+        dinnerToElab = results.rows[i];
+        groupCoordinates = dinnerToElab.group_coordinates;
+        groupIds = dinnerToElab.groupids;
+
+        console.log("Elaborazione cena", dinnerToElab.dinnerid, dinnerToElab.dinner_description);
+
+        if (groupIds.length < 9) {
+          console.log("Cena annullata per mancanza numero minimo partecipanti =(");
+          // TODO cena annullata, invio notifica ai partecipanti che è andata e cancello la cena e i gruppi partecipanti
+        } else {
+          permutations = permute(groupIds);
+          pathsResult = [];
+          queryArray = [];
+
+          permutations.forEach((permutation) => { // Per ogni permutazione
+            totalDistance = getTotalDistance(permutation, groupCoordinates);
+            avgDistance = totalDistance / 9; // Ottengo la distanza media
+
+            pathsResult.push( // Aggiungo il path all'array di risultati
+              {
+                permutation: permutation,
+                avgDistance: avgDistance
+              }
+            );
+          });
+
+          // Ordino l'array di permutazioni per aver i migliori path
+          pathsResult = pathsResult.sort((a, b) => (a.avgDistance > b.avgDistance) ? 1 : ((b.avgDistance > a.avgDistance) ? -1 : 0));
+          winnerPermutation = pathsResult[0];
+
+          console.log("Dinner " + dinnerToElab.dinnerid + " - Fine elaborazione, best permutation", winnerPermutation);
+
+          // Ottengo la struttura per generare le query
+          dinnerPaths.forEach((dinnerPath, idx) => {
+            queryArray[idx] = {
+              groupId: winnerPermutation.permutation[idx],
+              values: [
+                winnerPermutation.permutation[dinnerPath[0] - 1],
+                winnerPermutation.permutation[dinnerPath[1] - 1],
+                winnerPermutation.permutation[dinnerPath[2] - 1]
+              ]
+            };
+          });
+
+          // Lancio le query per generare dinners_detPaths
+          insertQueryText = "INSERT INTO dinners_detpaths (dinnerid, groupid, first_group_house, second_group_house, third_group_house) VALUES ";
+          queryArray.forEach((queryStructure, idx) => {
+            if (idx != 0) insertQueryText += ", ";
+            insertQueryText += "(" + dinnerToElab.dinnerid + ", " + queryStructure.groupId + ", " + queryStructure.values[0] + ", " + queryStructure.values[1] + ", " + queryStructure.values[2] + ")";
+          });
+
+          pool.query(insertQueryText, (error, results) => {
+            if (error) {
+              console.error('Elabora cene: errore query', error);
+            } else {
+              console.log("Elaborazione cena " + dinnerToElab.dinnerid + " - End");
+            }
+          });
+        }
+      }
+    }
+  })
 }
 
 //--------Routes Functions-------//
@@ -736,24 +920,6 @@ const getDinners = (request, response) => {
     otherDinners: []
   };
   let myDinnerId = 0; // Id della cena a cui partecipo
-
-  // Funzioni per calcolare la distanza in linea d'aria
-  function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
-    var R = 6371; // Raggio della terra in km
-    var dLat = deg2rad(lat2 - lat1);
-    var dLon = deg2rad(lon2 - lon1);
-    var a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2)
-      ;
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    var d = R * c; // Distanza in km
-    return d;
-  }
-  function deg2rad(deg) {
-    return deg * (Math.PI / 180)
-  }
 
   // 1 - MyDinner
   pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= current_date GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
@@ -1416,3 +1582,9 @@ app
 app.listen(process.env.PORT || 1111, () => {
   console.log(`Server listening`)
 })
+
+// Gestione elaborazione cene
+elaboraCene();
+const intervalObj = setInterval(() => {
+  elaboraCene();
+}, ElaboraCeneInterval);
