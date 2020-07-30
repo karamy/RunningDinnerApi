@@ -189,7 +189,7 @@ const elaboraCene = () => {
 
   // Array di paths da confrontare in tutte le possibili combinazioni dell'array di gruppi
   const dinnerPaths = [
-    [1, 4, 5],
+    [1, 4, 9],
     [1, 5, 2],
     [1, 3, 8],
     [6, 4, 8],
@@ -220,7 +220,7 @@ const elaboraCene = () => {
   // Ottiene la distanza di un possibile path della cena
   const getPathDistance = (dinnerPath, permutation, group_coordinates) => {
     // Es. DinnerPath: [1, 4, 5]
-    // Es. Permutation [1247, 5556, 2148, 5960, 5352, 3023, 6162, 5146, 4929
+    // Es. Permutation [1247, 5556, 2148, 5960, 5352, 3023, 6162, 5146, 4929]
     const coordGrp1 = getLatLongGrp(permutation[dinnerPath[0] - 1], group_coordinates);
     const coordGrp2 = getLatLongGrp(permutation[dinnerPath[1] - 1], group_coordinates);
     const coordGrp3 = getLatLongGrp(permutation[dinnerPath[2] - 1], group_coordinates);
