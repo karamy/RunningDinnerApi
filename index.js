@@ -185,7 +185,7 @@ const elaboraCene = () => {
       }
     }
     return ret;
-  }
+  };
 
   // Array di paths da confrontare in tutte le possibili combinazioni dell'array di gruppi
   const dinnerPaths = [
@@ -215,7 +215,7 @@ const elaboraCene = () => {
       }
     }
     return nullCoordObj;
-  }
+  };
 
   // Ottiene la distanza di un possibile path della cena
   const getPathDistance = (dinnerPath, permutation, group_coordinates) => {
@@ -1124,7 +1124,7 @@ const getDinnerDishes = (request, res) => {
   pool.query('SELECT * FROM dinners_detdishes WHERE dinnerid = ' + dinnerId, (error, results) => {
     if (error) {
       console.log(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       for (var i = 0; i < results.rows.length; i++) {
         const _groupDish = {
