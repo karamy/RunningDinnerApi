@@ -185,11 +185,11 @@ const elaboraCene = () => {
       }
     }
     return ret;
-  }
+  };
 
   // Array di paths da confrontare in tutte le possibili combinazioni dell'array di gruppi
   const dinnerPaths = [
-    [1, 4, 5],
+    [1, 4, 9],
     [1, 5, 2],
     [1, 3, 8],
     [6, 4, 8],
@@ -215,12 +215,12 @@ const elaboraCene = () => {
       }
     }
     return nullCoordObj;
-  }
+  };
 
   // Ottiene la distanza di un possibile path della cena
   const getPathDistance = (dinnerPath, permutation, group_coordinates) => {
     // Es. DinnerPath: [1, 4, 5]
-    // Es. Permutation [1247, 5556, 2148, 5960, 5352, 3023, 6162, 5146, 4929
+    // Es. Permutation [1247, 5556, 2148, 5960, 5352, 3023, 6162, 5146, 4929]
     const coordGrp1 = getLatLongGrp(permutation[dinnerPath[0] - 1], group_coordinates);
     const coordGrp2 = getLatLongGrp(permutation[dinnerPath[1] - 1], group_coordinates);
     const coordGrp3 = getLatLongGrp(permutation[dinnerPath[2] - 1], group_coordinates);
@@ -243,6 +243,44 @@ const elaboraCene = () => {
     return totalDistance;
   };
 
+  // Invia notifica ai partecipanti del gruppo che la cena è annullata
+  const sendCanceledDinnerNotification = function (userTokens) {
+    if (!userTokens.length) {
+      // Nessuno verrà notificato della cena annullata
+      console.warn('ElaboraCena - Utenti della cena annullata non abilitati a ricevere notifiche push');
+    } else {
+      // Genero le informazioni da inviare nella notifica
+      const notificationMsgBody = {
+        type: 'updateParams'
+      };
+
+      // Invio notifiche
+      sendNotification(userTokens, "Cena annullata",
+        "Purtroppo la cena a cui partecipi è stata annullata",
+        notificationMsgBody
+      );
+    }
+  };
+
+  // Invia notifica ai partecipanti del gruppo che la cena è stata generata
+  const sendComputedDinnerNotification = function (userTokens) {
+    if (!userTokens.length) {
+      // Nessuno verrà notificato della cena annullata
+      console.warn('ElaboraCena - Utenti della cena elaborata non abilitati a ricevere notifiche push');
+    } else {
+      // Genero le informazioni da inviare nella notifica
+      const notificationMsgBody = {
+        type: 'updateParams'
+      };
+
+      // Invio notifiche
+      sendNotification(userTokens, "Cena creata",
+        "L'evento cena è iniziato!",
+        notificationMsgBody
+      );
+    }
+  };
+
   // Ottengo tutte le cene che superano l'orario attuale e non hanno 
   // entries in dinners_detPaths
   pool.query("SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS group_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE gu.house = true AND dinners.dinnerid NOT IN (SELECT dinnerid FROM dinners_detpaths) AND dinner_date <= (SELECT NOW() AT TIME ZONE 'GMT-2') group by dinners.dinnerid", (error, results) => {
@@ -259,6 +297,7 @@ const elaboraCene = () => {
       let queryArray;
       let winnerPermutation;
       let insertQueryText; // Testo della query di insert in dinners_detPaths
+      let userTokens;
 
       if (results.rows.length == 0) {
         console.log("Elaborazione cene End - Nessuna cena da elaborare");
@@ -269,66 +308,79 @@ const elaboraCene = () => {
         dinnerToElab = results.rows[i];
         groupCoordinates = dinnerToElab.group_coordinates;
         groupIds = dinnerToElab.groupids;
+        userTokens = [];
 
         console.log("Elaborazione cena", dinnerToElab.dinnerid, dinnerToElab.dinner_description);
 
-        if (groupIds.length < 9) {
-          console.log("Cena annullata per mancanza numero minimo partecipanti =(");
-          // TODO cena annullata, invio notifica ai partecipanti che è andata e cancello la cena e i gruppi partecipanti
-        } else {
-          permutations = permute(groupIds);
-          pathsResult = [];
-          queryArray = [];
-
-          permutations.forEach((permutation) => { // Per ogni permutazione
-            totalDistance = getTotalDistance(permutation, groupCoordinates);
-            avgDistance = totalDistance / 9; // Ottengo la distanza media
-
-            pathsResult.push( // Aggiungo il path all'array di risultati
-              {
-                permutation: permutation,
-                avgDistance: avgDistance
+        // Ottengo i token dei partecipanti alla cena
+        pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON (dinners_detgroups.groupid = groups_users.groupid) WHERE dinners_detgroups.dinnerid = ' + dinnerToElab.dinnerid + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' ',
+          (error, res) => {
+            for (var i = 0; i < res.rows.length; i++) {
+              if (res.rows[i]['firebase_token']) {
+                userTokens.push(res.rows[i]['firebase_token']);
               }
-            );
-          });
+            }
 
-          // Ordino l'array di permutazioni per aver i migliori path
-          pathsResult = pathsResult.sort((a, b) => (a.avgDistance > b.avgDistance) ? 1 : ((b.avgDistance > a.avgDistance) ? -1 : 0));
-          winnerPermutation = pathsResult[0];
-
-          console.log("Dinner " + dinnerToElab.dinnerid + " - Fine elaborazione, best permutation", winnerPermutation);
-
-          // Ottengo la struttura per generare le query
-          dinnerPaths.forEach((dinnerPath, idx) => {
-            queryArray[idx] = {
-              groupId: winnerPermutation.permutation[idx],
-              values: [
-                winnerPermutation.permutation[dinnerPath[0] - 1],
-                winnerPermutation.permutation[dinnerPath[1] - 1],
-                winnerPermutation.permutation[dinnerPath[2] - 1]
-              ]
-            };
-          });
-
-          // Lancio le query per generare dinners_detPaths
-          insertQueryText = "INSERT INTO dinners_detpaths (dinnerid, groupid, first_group_house, second_group_house, third_group_house) VALUES ";
-          queryArray.forEach((queryStructure, idx) => {
-            if (idx != 0) insertQueryText += ", ";
-            insertQueryText += "(" + dinnerToElab.dinnerid + ", " + queryStructure.groupId + ", " + queryStructure.values[0] + ", " + queryStructure.values[1] + ", " + queryStructure.values[2] + ")";
-          });
-
-          pool.query(insertQueryText, (error, results) => {
-            if (error) {
-              console.error('Elabora cene: errore query', error);
+            if (groupIds.length < 9) {
+              console.log("Cena annullata per mancanza numero minimo partecipanti =(");
+              sendCanceledDinnerNotification(userTokens);
             } else {
-              console.log("Elaborazione cena " + dinnerToElab.dinnerid + " - End");
+
+              permutations = permute(groupIds);
+              pathsResult = [];
+              queryArray = [];
+
+              permutations.forEach((permutation) => { // Per ogni permutazione
+                totalDistance = getTotalDistance(permutation, groupCoordinates);
+                avgDistance = totalDistance / 9; // Ottengo la distanza media
+
+                pathsResult.push( // Aggiungo il path all'array di risultati
+                  {
+                    permutation: permutation,
+                    avgDistance: avgDistance
+                  }
+                );
+              });
+
+              // Ordino l'array di permutazioni per aver i migliori path
+              pathsResult = pathsResult.sort((a, b) => (a.avgDistance > b.avgDistance) ? 1 : ((b.avgDistance > a.avgDistance) ? -1 : 0));
+              winnerPermutation = pathsResult[0];
+
+              console.log("Dinner " + dinnerToElab.dinnerid + " - Fine elaborazione, best permutation", winnerPermutation);
+
+              // Ottengo la struttura per generare le query
+              dinnerPaths.forEach((dinnerPath, idx) => {
+                queryArray[idx] = {
+                  groupId: winnerPermutation.permutation[idx],
+                  values: [
+                    winnerPermutation.permutation[dinnerPath[0] - 1],
+                    winnerPermutation.permutation[dinnerPath[1] - 1],
+                    winnerPermutation.permutation[dinnerPath[2] - 1]
+                  ]
+                };
+              });
+
+              // Lancio le query per generare dinners_detPaths
+              insertQueryText = "INSERT INTO dinners_detpaths (dinnerid, groupid, first_group_house, second_group_house, third_group_house) VALUES ";
+              queryArray.forEach((queryStructure, idx) => {
+                if (idx != 0) insertQueryText += ", ";
+                insertQueryText += "(" + dinnerToElab.dinnerid + ", " + queryStructure.groupId + ", " + queryStructure.values[0] + ", " + queryStructure.values[1] + ", " + queryStructure.values[2] + ")";
+              });
+
+              pool.query(insertQueryText, (error, results) => {
+                if (error) {
+                  console.error('Elabora cene: errore query', error);
+                } else {
+                  console.log("Elaborazione cena " + dinnerToElab.dinnerid + " - End");
+                  sendComputedDinnerNotification(userTokens);
+                }
+              });
             }
           });
-        }
       }
     }
   })
-}
+};
 
 //--------Routes Functions-------//
 
@@ -1124,7 +1176,7 @@ const getDinnerHouses = (request, res) => {
   pool.query("SELECT 'first' AS group_order, d1.groupid, d1.name, d1.userid, d1.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") AS d1 ON d1.groupid = p1.first_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d1.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId + " UNION ALL SELECT 'second' AS group_order, d2.groupid, d2.name, d2.userid, d2.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") as d2 ON d2.groupid = p1.second_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d2.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId + " UNION ALL SELECT 'third' AS group_order, d3.groupid, d3.name, d3.userid, d3.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") as d3 ON d3.groupid = p1.third_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d3.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId, (error, results) => {
     if (error) {
       console.log(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       const dinnerHouses = {
         firstHouse: { groupid: null, firstUserId: null, firstName: "", secondUserId: null, secondName: "", firstImage: "", secondImage: "", groupAddress: "" },
@@ -1272,7 +1324,7 @@ const leaveDinner = (request, response) => {
         notificationMsgBody
       );
     }
-  }
+  };
 
   console.log("[LeaveDinner] GroupId: " + groupId + " , DinnerId: " + dinnerId);
 
