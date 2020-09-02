@@ -1115,14 +1115,18 @@ const getDinnerDetails = (request, response) => {
                     console.warn(error);
                     response.status(500).json({ message: 'errore query' })
                   } else {
-                    dinnerDetails.dinnerData = results.rows[0];
+
+                    if(results.rows.length == 0){ // Se la cena non esiste più restituisco errore 404
+                      response.status(404).json({ message: 'cena inesistente' });
+                    } else {
+                      dinnerDetails.dinnerData = results.rows[0];
 
                     // 4 - UsersData
                     pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, gu.address as group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = groups_users.groupid WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' ORDER BY users.userid',
                       (error, results) => {
                         if (error) {
                           console.warn(error);
-                          response.status(500).json({ message: 'errore query' })
+                          response.status(500).json({ message: 'errore query' });
                         } else {
                           dinnerDetails.usersData = [];
                           for (var i = 0; i < results.rows.length; i++) {
@@ -1160,6 +1164,7 @@ const getDinnerDetails = (request, response) => {
                             });
                         }
                       });
+                    }
                   }
                 });
             }
