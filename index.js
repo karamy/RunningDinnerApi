@@ -707,7 +707,7 @@ const getParams = (request, response) => {
         }
 
         // 2 - DinnerId
-        pool.query('SELECT * FROM dinners_detgroups WHERE groupid = ' + rdParams.groupId,
+        pool.query('SELECT * FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinners.dinner_date >= current_date AND groupid = ' + rdParams.groupId,
           (error, results) => {
             if (error) {
               console.warn(error);
