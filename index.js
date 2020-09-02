@@ -1173,25 +1173,61 @@ const getDinnerDetails = (request, response) => {
     });
 };
 
-const getDinnerDishes = (request, res) => {
-  const { dinnerId } = request.body;
-  const dinnerDishes = [];
+const getDinnerHouses = (request, res) => {
+  const dinnerId = request.body.dinnerId;
+  const groupId = request.body.groupId;
 
-  // Ottengo quali piatti devono preparare i vari gruppi partecipanti alla cena
-  pool.query('SELECT * FROM dinners_detdishes WHERE dinnerid = ' + dinnerId, (error, results) => {
+  // Ottengo le case e relative info facenti parte del path dell'utente (compresa la sua)
+  pool.query("SELECT 'first' AS group_order, d1.groupid, d1.name, d1.userid, d1.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") AS d1 ON d1.groupid = p1.first_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d1.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId + " UNION ALL SELECT 'second' AS group_order, d2.groupid, d2.name, d2.userid, d2.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") as d2 ON d2.groupid = p1.second_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d2.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId + " UNION ALL SELECT 'third' AS group_order, d3.groupid, d3.name, d3.userid, d3.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") as d3 ON d3.groupid = p1.third_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d3.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId, (error, results) => {
     if (error) {
       console.log(error);
       res.status(500).json({ message: 'errore query' })
     } else {
-      for (var i = 0; i < results.rows.length; i++) {
-        const _groupDish = {
-          groupId: results.rows[i].groupid,
-          dishId: results.rows[i].dishid
-        }
-        dinnerDishes.push(_groupDish);
+      const dinnerHouses = {
+        firstHouse: { groupid: null, firstUserId: null, firstName: "", secondUserId: null, secondName: "", firstImage: "", secondImage: "", groupAddress: "" },
+        secondHouse: { groupid: null, firstUserId: null, firstName: "", secondUserId: null, secondName: "", firstImage: "", secondImage: "", groupAddress: "" },
+        thirdHouse: { groupid: null, firstUserId: null, firstName: "", secondUserId: null, secondName: "", firstImage: "", secondImage: "", groupAddress: "" }
       }
-      // Risposta contenente dishes
-      res.status(200).json(dinnerDishes);
+      for (let i = 0; i < results.rows.length; i++) {
+        if (results.rows[i].group_order === 'first') {
+          if (!dinnerHouses.firstHouse.firstName) {
+            dinnerHouses.firstHouse.firstUserId = results.rows[i].userid
+            dinnerHouses.firstHouse.firstName = results.rows[i].name
+            dinnerHouses.firstHouse.firstImage = results.rows[i].profile_photo
+            dinnerHouses.firstHouse.groupAddress = results.rows[i].address
+            dinnerHouses.firstHouse.groupid = results.rows[i].groupid
+          } else {
+            dinnerHouses.firstHouse.secondUserId = results.rows[i].userid
+            dinnerHouses.firstHouse.secondName = results.rows[i].name
+            dinnerHouses.firstHouse.secondImage = results.rows[i].profile_photo
+          }
+        } else if (results.rows[i].group_order === 'second') {
+          if (!dinnerHouses.secondHouse.firstName) {
+            dinnerHouses.secondHouse.firstUserId = results.rows[i].userid
+            dinnerHouses.secondHouse.firstName = results.rows[i].name
+            dinnerHouses.secondHouse.firstImage = results.rows[i].profile_photo
+            dinnerHouses.secondHouse.groupAddress = results.rows[i].address
+            dinnerHouses.secondHouse.groupid = results.rows[i].groupid
+          } else {
+            dinnerHouses.secondHouse.secondUserId = results.rows[i].userid
+            dinnerHouses.secondHouse.secondName = results.rows[i].name
+            dinnerHouses.secondHouse.secondImage = results.rows[i].profile_photo
+          }
+        } else if (results.rows[i].group_order === 'third') {
+          if (!dinnerHouses.thirdHouse.firstName) {
+            dinnerHouses.thirdHouse.firstUserId = results.rows[i].userid
+            dinnerHouses.thirdHouse.firstName = results.rows[i].name
+            dinnerHouses.thirdHouse.firstImage = results.rows[i].profile_photo
+            dinnerHouses.thirdHouse.groupAddress = results.rows[i].address
+            dinnerHouses.thirdHouse.groupid = results.rows[i].groupid
+          } else {
+            dinnerHouses.thirdHouse.secondUserId = results.rows[i].userid
+            dinnerHouses.thirdHouse.secondName = results.rows[i].name
+            dinnerHouses.thirdHouse.secondImage = results.rows[i].profile_photo
+          }
+        }
+      }
+      res.status(200).json(dinnerHouses);
     }
   });
 }
@@ -1613,10 +1649,10 @@ app
   .route('/getDinnerDetails')
   .post(authenticateJWT, getDinnerDetails)
 
-//Dinner dishes
+//Dinner houses
 app
-  .route('/getDinnerDishes')
-  .post(authenticateJWT, getDinnerDishes)
+  .route('/getDinnerHouses')
+  .post(authenticateJWT, getDinnerHouses)
 
 //Leaver dinner
 app
