@@ -1116,54 +1116,54 @@ const getDinnerDetails = (request, response) => {
                     response.status(500).json({ message: 'errore query' })
                   } else {
 
-                    if(results.rows.length == 0){ // Se la cena non esiste più restituisco errore 404
+                    if (results.rows.length == 0) { // Se la cena non esiste più restituisco errore 404
                       response.status(404).json({ message: 'cena inesistente' });
                     } else {
                       dinnerDetails.dinnerData = results.rows[0];
 
-                    // 4 - UsersData
-                    pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, gu.address as group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = groups_users.groupid WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' ORDER BY users.userid',
-                      (error, results) => {
-                        if (error) {
-                          console.warn(error);
-                          response.status(500).json({ message: 'errore query' });
-                        } else {
-                          dinnerDetails.usersData = [];
-                          for (var i = 0; i < results.rows.length; i++) {
-                            const _usersData = {
-                              groupid: results.rows[i].groupid,
-                              userId: results.rows[i].userid,
-                              name: results.rows[i].name,
-                              address: results.rows[i].address,
-                              group_address: results.rows[i].group_address,
-                              birth_date: results.rows[i].birth_date,
-                              profile_photo: results.rows[i].profile_photo
+                      // 4 - UsersData
+                      pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, gu.address as group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = groups_users.groupid WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' ORDER BY users.userid',
+                        (error, results) => {
+                          if (error) {
+                            console.warn(error);
+                            response.status(500).json({ message: 'errore query' });
+                          } else {
+                            dinnerDetails.usersData = [];
+                            for (var i = 0; i < results.rows.length; i++) {
+                              const _usersData = {
+                                groupid: results.rows[i].groupid,
+                                userId: results.rows[i].userid,
+                                name: results.rows[i].name,
+                                address: results.rows[i].address,
+                                group_address: results.rows[i].group_address,
+                                birth_date: results.rows[i].birth_date,
+                                profile_photo: results.rows[i].profile_photo
+                              }
+                              dinnerDetails.usersData.push(_usersData);
                             }
-                            dinnerDetails.usersData.push(_usersData);
-                          }
-                          const userAddress = request.body.userAddress;
-                          const userGroupId = request.body.userGroupId;
-                          const otherUsersAddresses = []
-                          const dinnerGroupIds = [];
+                            const userAddress = request.body.userAddress;
+                            const userGroupId = request.body.userGroupId;
+                            const otherUsersAddresses = []
+                            const dinnerGroupIds = [];
 
-                          // Creo array contenente i group_address degli altri partecipanti alla cena escluso lo user ed il suo partner
-                          for (let k = 0; k < results.rows.length; k++) {
-                            if (dinnerGroupIds.includes(results.rows[k].groupid) === false && results.rows[k].groupid !== userGroupId) {
-                              otherUsersAddresses.push(results.rows[k].group_address);
-                              dinnerGroupIds.push(results.rows[k].groupid);
+                            // Creo array contenente i group_address degli altri partecipanti alla cena escluso lo user ed il suo partner
+                            for (let k = 0; k < results.rows.length; k++) {
+                              if (dinnerGroupIds.includes(results.rows[k].groupid) === false && results.rows[k].groupid !== userGroupId) {
+                                otherUsersAddresses.push(results.rows[k].group_address);
+                                dinnerGroupIds.push(results.rows[k].groupid);
+                              };
                             };
-                          };
-                          calcDistance(userAddress, otherUsersAddresses).then(res => {
-                            dinnerDetails.avgDistance = res
-                            response.status(200).json(dinnerDetails);
-                          },
-                            () => { // Se errore nel calcolo delle distanze ritorno comunque esito positivo
-                              console.log("Errore in calcDistance")
-                              dinnerDetails.avgDistance = "Errore"
+                            calcDistance(userAddress, otherUsersAddresses).then(res => {
+                              dinnerDetails.avgDistance = res
                               response.status(200).json(dinnerDetails);
-                            });
-                        }
-                      });
+                            },
+                              () => { // Se errore nel calcolo delle distanze ritorno comunque esito positivo
+                                console.log("Errore in calcDistance")
+                                dinnerDetails.avgDistance = "Errore"
+                                response.status(200).json(dinnerDetails);
+                              });
+                          }
+                        });
                     }
                   }
                 });
@@ -1230,6 +1230,47 @@ const getDinnerHouses = (request, res) => {
       res.status(200).json(dinnerHouses);
     }
   });
+}
+
+const insertDinnerVotes = (request, response) => {
+  const { groupsArray, votingGroupId, dinnerId } = request.body;
+  const votingUserId = request.user.userid;
+
+  console.log("Insert Dinner Votes - dinnerId: " + dinnerId);
+
+  groupsArray.forEach(x => {
+    for (let i = 0; i < x.userIds.length; i++) {
+      // Valorizzo le costanti con i valori relativi al gruppo
+      const groupId = x.votes.groupId;
+      const userId = x.userIds[i];
+      const firstCatVote = x.votes.firstCategory;
+      const secondCatVote = x.votes.secondCategory;
+      const thirdCatVote = x.votes.thirdCategory;
+      const fourthCatVote = x.votes.fourthCategory;
+      const fifthCatVote = x.votes.fifthCategory;
+
+      // Inserisco i voti nella tabella controllando se è gia presente un elemento, in tal caso faccio la media (se sono già presenti dei voti) oppure inserisco i voti se null (ovvero la riga è presente perchè ha votato)
+      pool.query('INSERT INTO dinners_detvotes (dinnerid, groupid, userid, firstcat_avg, secondcat_avg, thirdcat_avg, fourthcat_avg, fifthcat_avg) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (dinnerid, groupid, userid) DO UPDATE SET firstcat_avg = CASE WHEN dinners_detvotes.firstcat_avg IS NULL THEN $4 ELSE ((dinners_detvotes.firstcat_avg + excluded.firstcat_avg) / 2) END, secondcat_avg = CASE WHEN dinners_detvotes.secondcat_avg IS NULL THEN $5 ELSE (dinners_detvotes.secondcat_avg + excluded.secondcat_avg) / 2 END, thirdcat_avg = CASE WHEN dinners_detvotes.thirdcat_avg IS NULL THEN $6 ELSE (dinners_detvotes.thirdcat_avg + excluded.thirdcat_avg) / 2 END, fourthcat_avg = CASE WHEN dinners_detvotes.fourthcat_avg IS NULL THEN $7 ELSE (dinners_detvotes.fourthcat_avg + excluded.fourthcat_avg) / 2 END, fifthcat_avg = CASE WHEN dinners_detvotes.fifthcat_avg IS NULL THEN $8 ELSE (dinners_detvotes.fifthcat_avg + excluded.fifthcat_avg) / 2 END',
+        [dinnerId, groupId, userId, firstCatVote, secondCatVote, thirdCatVote, fourthCatVote, fifthCatVote], (err) => {
+          if (err) {
+            console.warn(err);
+            response.status(500).json({ message: 'errore query' })
+          }
+        });
+    }
+  })
+
+  // Inserisco riga relativa al votante comprendente il suo groupId, userId e il flag 'true' che indica che ha votato
+  pool.query('INSERT INTO dinners_detvotes (dinnerid, groupid, userid, has_voted) VALUES ($1, $2, $3, $4) ON CONFLICT (dinnerid, groupid, userid) DO UPDATE SET userid = excluded.userid, groupid = excluded.groupid, dinnerid = excluded.dinnerid, has_voted = $4',
+    [dinnerId, votingGroupId, votingUserId, 'true'], (err) => {
+      if (err) {
+        console.warn(err);
+        response.status(500).json({ message: 'errore query' })
+      } else {
+        console.log("Voti correttamente aggiunti")
+        response.status(200).send();
+      }
+    });
 }
 
 const createDinner = (request, response) => {
@@ -1653,6 +1694,11 @@ app
 app
   .route('/getDinnerHouses')
   .post(authenticateJWT, getDinnerHouses)
+
+// Dinner votes
+app
+  .route('/insertDinnerVotes')
+  .post(authenticateJWT, insertDinnerVotes)
 
 //Leaver dinner
 app
