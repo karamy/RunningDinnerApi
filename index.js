@@ -395,6 +395,122 @@ const elaboraCene = () => {
   })
 };
 
+// Funzione che elabora le fase e invia notifiche
+const elaboraFasi = () => {
+  console.log("Elabora fasi - Start");
+
+  // Invia notifica ai partecipanti del gruppo che la cena è stata generata
+  const sendPhaseChangeNotification = function (userTokens, notificationText) {
+    if (!userTokens.length) {
+      // Nessuno verrà notificato del cambio fase
+      console.warn('ElaboraFasi - Utenti della fase non abilitati a ricevere notifiche push');
+    } else {
+      // Genero le informazioni da inviare nella notifica
+      const notificationMsgBody = {
+        type: 'updateParams'
+      };
+
+      // Invio notifiche
+      sendNotification(userTokens, "Cambio fase",
+        notificationText,
+        notificationMsgBody
+      );
+    }
+  };
+
+  // Invia la notifica e aggiorna la cena al cambio fase
+  const changePhase = function (dinnerId, notificationText, nextPhase) {
+    // Ottengo i token dei partecipanti alla cena
+    pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON (dinners_detgroups.groupid = groups_users.groupid) WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' ',
+      (error, res) => {
+        const userTokens = [];
+        for (var i = 0; i < res.rows.length; i++) {
+          if (res.rows[i]['firebase_token']) {
+            userTokens.push(res.rows[i]['firebase_token']);
+          }
+        }
+        sendPhaseChangeNotification(userTokens, notificationText);
+        updateDinnerStatus(dinnerId, nextPhase);
+      });
+  };
+
+  // Fase 1
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= dinner_date + interval '-1' hour  AND dinner_state = 1", (error, results) => {
+    if (error) {
+      console.error('Elabora fase 1: errore query', error);
+    } else {
+      let dinnerToElab;
+
+      if (results.rows.length == 0) {
+        console.log("Elaborazione fase 1 end - Nessuna cena da elaborare");
+      }
+
+      for (var i = 0; i < results.rows.length; i++) {
+        dinnerToElab = results.rows[i];
+        console.log("Elaborazione fase 1", dinnerToElab.dinnerid, dinnerToElab.dinner_description);
+        changePhase(dinnerToElab.dinnerid, "Inizia la fase 1!", 2);
+      }
+    }
+  });
+
+  // Fase 2
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= (dinner_date + interval '35' minute) AND dinner_state = 2", (error, results) => {
+    if (error) {
+      console.error('Elabora fase 2: errore query', error);
+    } else {
+      let dinnerToElab;
+
+      if (results.rows.length == 0) {
+        console.log("Elaborazione fase 2 end - Nessuna cena da elaborare");
+      }
+
+      for (var i = 0; i < results.rows.length; i++) {
+        dinnerToElab = results.rows[i];
+        console.log("Elaborazione fase 2", dinnerToElab.dinnerid, dinnerToElab.dinner_description);
+        changePhase(dinnerToElab.dinnerid, "Inizia la fase 2!", 3);
+      }
+    }
+  });
+
+  // Fase 3
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= (dinner_date + interval '95' minute) AND dinner_state = 3", (error, results) => {
+    if (error) {
+      console.error('Elabora fase 3: errore query', error);
+    } else {
+      let dinnerToElab;
+
+      if (results.rows.length == 0) {
+        console.log("Elaborazione fase 3 end - Nessuna cena da elaborare");
+      }
+
+      for (var i = 0; i < results.rows.length; i++) {
+        dinnerToElab = results.rows[i];
+        console.log("Elaborazione fase 3", dinnerToElab.dinnerid, dinnerToElab.dinner_description);
+        changePhase(dinnerToElab.dinnerid, "Inizia la fase 3!", 4);
+      }
+    }
+  });
+
+  // Fase 4
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= (dinner_date + interval '160' minute) AND dinner_state = 4", (error, results) => {
+    if (error) {
+      console.error('Elabora fase 4: errore query', error);
+    } else {
+      let dinnerToElab;
+
+      if (results.rows.length == 0) {
+        console.log("Elaborazione fase 4 end - Nessuna cena da elaborare");
+      }
+
+      for (var i = 0; i < results.rows.length; i++) {
+        dinnerToElab = results.rows[i];
+        console.log("Elaborazione fase 4", dinnerToElab.dinnerid, dinnerToElab.dinner_description);
+        changePhase(dinnerToElab.dinnerid, "E' ora di votare!", 5);
+      }
+    }
+  });
+};
+
 //--------Routes Functions-------//
 
 const getUsers = (request, response) => {
@@ -1737,6 +1853,8 @@ app.listen(process.env.PORT || 1111, () => {
 
 // Gestione elaborazione cene
 elaboraCene();
+elaboraFasi();
 const intervalObj = setInterval(() => {
   elaboraCene();
+  elaboraFasi();
 }, ElaboraCeneInterval);
