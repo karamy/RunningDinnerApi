@@ -1402,6 +1402,26 @@ const insertDinnerVotes = (request, response) => {
     });
 }
 
+// Controllo se l'utente ha già votato o meno
+const checkIfVoted = (request, res) => {
+  const { dinnerId } = request.body;
+  const userId = request.user.userid;
+
+  // Controllo se presente l'userId dell'utente associato a flag true nel campo hasVoted
+  pool.query('SELECT * FROM dinners_detvotes WHERE dinnerid = ' + dinnerId + ' AND userid = ' + userId + ' AND has_voted = true', (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      if (results.rows.length === 0) {
+        res.json({ hasVoted: false });
+      } else {
+        res.json({ hasVoted: true });
+      }
+    }
+  });
+}
+
 const createDinner = (request, response) => {
   const { dinnerTitle, dinnerDescription, dinnerType, dinnerDate, groupId } = request.body;
   const userId = request.user.userid;
@@ -1828,6 +1848,11 @@ app
 app
   .route('/insertDinnerVotes')
   .post(authenticateJWT, insertDinnerVotes)
+
+// Dinner hasVoted
+app
+  .route('/checkIfVoted')
+  .post(authenticateJWT, checkIfVoted)
 
 //Leaver dinner
 app
