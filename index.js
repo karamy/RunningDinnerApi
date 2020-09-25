@@ -165,6 +165,17 @@ function deg2rad(deg) {
   return deg * (Math.PI / 180)
 }
 
+// Funzione che aggiorna lo stato della cena 
+// 0 - non elaborata, -1 - numero partecipanti insufficiente,
+// 1 - elaborati paths, 2 - elaborati voti
+const updateDinnerStatus = (dinnerId, status) => {
+  pool.query('UPDATE dinners SET dinner_state = $1 WHERE dinnerid = $2', [status, dinnerId], (error, results) => {
+    if (error) {
+      console.warn("Cena ", dinnerId, "non aggiornata: ", error);
+    }
+  });
+};
+
 // Funzione che elabora le cene e genera le portate
 const elaboraCene = () => {
   console.log("Elabora cene - Start");
@@ -281,9 +292,9 @@ const elaboraCene = () => {
     }
   };
 
-  // Ottengo tutte le cene che superano l'orario attuale e non hanno 
-  // entries in dinners_detPaths
-  pool.query("SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS group_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE gu.house = true AND dinners.dinnerid NOT IN (SELECT dinnerid FROM dinners_detpaths) AND dinner_date <= (SELECT NOW() AT TIME ZONE 'GMT-2') group by dinners.dinnerid", (error, results) => {
+  // Ottengo tutte le cene per cui now() è maggiore o uguale a un giorno prima dell'inizio cena,
+  // senza entries in dinners_detPaths e che non sono state ancora elaborate
+  pool.query("SELECT dinners.*, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS group_coordinates, array_agg(dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE gu.house = true AND dinners.dinnerid NOT IN (SELECT dinnerid FROM dinners_detpaths) AND  (SELECT (NOW() + interval '1' day) AT TIME ZONE 'GMT-2') >= dinner_date and dinner_state = 0 group by dinners.dinnerid", (error, results) => {
     if (error) {
       console.error('Elabora cene: errore query', error);
     } else {
@@ -324,6 +335,7 @@ const elaboraCene = () => {
             if (groupIds.length < 9) {
               console.log("Cena annullata per mancanza numero minimo partecipanti =(");
               sendCanceledDinnerNotification(userTokens);
+              updateDinnerStatus(dinnerToElab.dinnerid, -1);
             } else {
 
               permutations = permute(groupIds);
@@ -373,6 +385,7 @@ const elaboraCene = () => {
                 } else {
                   console.log("Elaborazione cena " + dinnerToElab.dinnerid + " - End");
                   sendComputedDinnerNotification(userTokens);
+                  updateDinnerStatus(dinnerToElab.dinnerid, 1);
                 }
               });
             }
@@ -446,7 +459,7 @@ const updateUser = (req, res) => {
         }
       })
     }
-  })
+  });
 };
 
 // Ottengo tutti i badge più le eventuali descrizioni/foto della fase corrente se il progress del badge è ==! null
