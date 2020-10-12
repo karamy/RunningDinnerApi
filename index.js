@@ -176,7 +176,7 @@ const updateDinnerStatus = (dinnerId, status) => {
   });
 };
 
-// Funzione che elabora le cene e genera le portate
+// Funzione che elabora le cene e genera le fasi
 const elaboraCene = () => {
   console.log("Elabora cene - Start");
 
@@ -383,8 +383,8 @@ const elaboraCene = () => {
                 if (error) {
                   console.error('Elabora cene: errore query', error);
                 } else {
-                  console.log("Elaborazione cena " + dinnerToElab.dinnerid + " - End");
                   sendComputedDinnerNotification(userTokens);
+                  console.log("Elaborazione cena " + dinnerToElab.dinnerid + " - End");
                   updateDinnerStatus(dinnerToElab.dinnerid, 1);
                 }
               });
@@ -395,11 +395,11 @@ const elaboraCene = () => {
   })
 };
 
-// Funzione che elabora le fase e invia notifiche
+// Funzione che elabora i passaggi di fase della cena
 const elaboraFasi = () => {
   console.log("Elabora fasi - Start");
 
-  // Invia notifica ai partecipanti del gruppo che la cena è stata generata
+  // Invia notifica ai partecipanti del gruppo che la fase è cambiata
   const sendPhaseChangeNotification = function (userTokens, notificationText) {
     if (!userTokens.length) {
       // Nessuno verrà notificato del cambio fase
@@ -511,6 +511,113 @@ const elaboraFasi = () => {
   });
 };
 
+// Funzione che elabora i voti della cena
+const elaboraVoti = () => {
+  console.log("Elabora voti - Start");
+
+  // Invia la notifica e aggiorna la cena una volta elaborati i voti e i badges
+  const saveVoteComplete = function (dinnerId) {
+    // Ottengo i token dei partecipanti alla cena
+    pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON (dinners_detgroups.groupid = groups_users.groupid) WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' ',
+      (error, res) => {
+        const userTokens = [];
+
+        for (var i = 0; i < res.rows.length; i++) {
+          if (res.rows[i]['firebase_token']) {
+            userTokens.push(res.rows[i]['firebase_token']);
+          }
+        }
+
+        if (!userTokens.length) {
+          // Nessuno verrà notificato del cambio fase
+          console.warn('ElaboraVoti - Utenti della fase non abilitati a ricevere notifiche push');
+        } else {
+          // Genero le informazioni da inviare nella notifica
+          const notificationMsgBody = {
+            type: 'updateParams'
+          };
+
+          // Invio notifiche
+          sendNotification(userTokens, "Votazione terminata!",
+            "La cena è terminata, visualizza i vincitori",
+            notificationMsgBody
+          );
+        }
+
+        updateDinnerStatus(dinnerId, 6);
+      });
+  };
+
+  // Aggiunge un badge all'utente
+  const insertDinnerBadge = function (userId, badgeId) {
+    pool.query('INSERT INTO badges_detusers (user_id, badge_id, progress) VALUES ($1, $2, 1) ON CONFLICT (user_id, badge_id) DO UPDATE SET progress = badges_detusers.progress + 1', [userId, badgeId], (error) => {
+      if (error) {
+        console.error('Insert dinner badge: errore query', error);
+      }
+    });
+  }
+
+  // Salva il vincitore di categoria e assegna il relativo badge
+  const insertDinnerVote = function (dinnerId, badgeId, groupId, userId, vote, hasVoted) {
+    pool.query("INSERT INTO dinners_detwinners (dinnerid, badgeid, groupid, userid, vote, has_voted) VALUES ($1, $2, $3, $4, $5, $6)", [dinnerId, badgeId, groupId, userId, vote, hasVoted], (error) => {
+      if (error) {
+        console.error('Insert dinner vote: errore query', error);
+      } else {
+        if (hasVoted) { // Assegno il badge solo se l'utente ha votato
+          insertDinnerBadge(userId, badgeId);
+        }
+      }
+    });
+  }
+
+  // Ottengo tutte le cene terminate
+  pool.query("SELECT * from dinners  WHERE NOW() AT TIME ZONE 'GMT-2' >= dinner_date + interval '180' minute  AND dinner_state = 5", (error, results) => {
+    if (error) {
+      console.error('Elabora voti: errore query', error);
+    } else {
+      let dinnerId;
+      let usersElaborati;
+
+      if (results.rows.length == 0) {
+        console.log("Elaborazione voti end - Nessuna cena da elaborare");
+      }
+
+      for (var i = 0; i < results.rows.length; i++) { // Per ogni cena terminata
+        dinnerId = results.rows[i]["dinnerid"];
+
+        console.log("Elaborazione voti cena", dinnerId);
+
+        // Ottengo i vincitori della cena per ogni categoria
+        pool.query("SELECT t1.category, t1.groupid, t1.userid, t1.vote,t1.has_voted,dtb.badgeid from (SELECT dinnerid, 'dinner' AS category, groupid, userid, (firstcat_avg + secondcat_avg + thirdcat_avg + fourthcat_avg + fifthcat_avg) AS vote, has_voted FROM dinners_detvotes INNER JOIN (SELECT max(firstcat_avg + secondcat_avg + thirdcat_avg + fourthcat_avg + fifthcat_avg) AS allsum FROM dinners_detvotes) AS dv1 ON firstcat_avg + secondcat_avg + thirdcat_avg + fourthcat_avg + fifthcat_avg = dv1.allsum WHERE dinnerid = " + dinnerId + " UNION ALL (SELECT dinnerid, 'firstcat' AS category, groupid, userid, (firstcat_avg) AS vote, has_voted FROM dinners_detvotes INNER JOIN (SELECT max(firstcat_avg) AS maxvote FROM dinners_detvotes) AS dv1 ON firstcat_avg = dv1.maxvote WHERE dinnerid = " + dinnerId + ") UNION ALL (SELECT dinnerid, 'secondcat' AS category, groupid, userid, (secondcat_avg) AS vote, has_voted FROM dinners_detvotes INNER JOIN (SELECT max(secondcat_avg) AS maxvote FROM dinners_detvotes) AS dv1 ON secondcat_avg = dv1.maxvote WHERE dinnerid = " + dinnerId + ") UNION ALL (SELECT dinnerid, 'thirdcat' AS category, groupid, userid, (thirdcat_avg) AS vote, has_voted FROM dinners_detvotes INNER JOIN (SELECT max(thirdcat_avg) AS maxvote FROM dinners_detvotes) AS dv1 ON thirdcat_avg = dv1.maxvote WHERE dinnerid = " + dinnerId + ") UNION ALL (SELECT dinnerid, 'fourthcat' AS category, groupid, userid, (fourthcat_avg) AS vote, has_voted FROM dinners_detvotes INNER JOIN (SELECT max(fourthcat_avg) AS maxvote FROM dinners_detvotes) AS dv1 ON fourthcat_avg = dv1.maxvote WHERE dinnerid = " + dinnerId + ") UNION ALL (SELECT dinnerid, 'fifthcat' AS category, groupid, userid, (fifthcat_avg) AS vote, has_voted FROM dinners_detvotes INNER JOIN (SELECT max(fifthcat_avg) AS maxvote FROM dinners_detvotes) AS dv1 ON fifthcat_avg = dv1.maxvote WHERE dinnerid = " + dinnerId + ")) as t1 INNER JOIN dinners On t1.dinnerid = dinners.dinnerid LEFT JOIN  dinners_types_badges dtb on dinners.dinner_type = dtb.dinner_type AND t1.category = dtb.category  ", (error, results) => {
+          if (error) {
+            console.error('Elabora voti della cena', dinnerid, ': errore query', error);
+          } else {
+
+            // Per ogni riga dei vincitori di categoria assegno il relativo voto e badge
+            usersElaborati = [];
+            for (var j = 0; j < results.rows.length; j++) {
+              insertDinnerVote(dinnerId, results.rows[j]["badgeid"], results.rows[j]["groupid"], results.rows[j]["userid"], results.rows[j]["vote"], results.rows[j]["has_voted"]);
+
+              // Assegnazione badge "di cena" agli utenti
+              if (!usersElaborati.includes(results.rows[j]["userid"])) {
+                // 1) Badge partecipazione cena
+                insertDinnerBadge(results.rows[j]["userid"], 8); 
+
+                usersElaborati.push(results.rows[j]["userid"]);
+              }
+            }
+
+
+          }
+
+          saveVoteComplete(dinnerId);
+        }
+        );
+      }
+    }
+  });
+};
+
 //--------Routes Functions-------//
 
 const getUsers = (request, response) => {
@@ -593,6 +700,7 @@ const getUserBadges = (req, res) => {
   })
 };
 
+// NB Rotta non utilizzata, nata per debug
 // Aggiunge il badge in badges_detusers se non esiste, altrimenti lo aggiorna
 const insertUserBadge = (req, res) => {
   const userData = req.body;
@@ -1741,7 +1849,7 @@ app
   .route('/getUserBadges')
   .post(getUserBadges)
 
-//InsertUserBadge
+//InsertUserBadge (non utilizzata)
 app
   .route('/insertUserBadge')
   .post(insertUserBadge)
@@ -1879,7 +1987,9 @@ app.listen(process.env.PORT || 1111, () => {
 // Gestione elaborazione cene
 elaboraCene();
 elaboraFasi();
+elaboraVoti();
 const intervalObj = setInterval(() => {
   elaboraCene();
   elaboraFasi();
+  elaboraVoti();
 }, ElaboraCeneInterval);
