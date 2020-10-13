@@ -601,13 +601,11 @@ const elaboraVoti = () => {
               // Assegnazione badge "di cena" agli utenti
               if (!usersElaborati.includes(results.rows[j]["userid"])) {
                 // 1) Badge partecipazione cena
-                insertDinnerBadge(results.rows[j]["userid"], 8); 
+                insertDinnerBadge(results.rows[j]["userid"], 8);
 
                 usersElaborati.push(results.rows[j]["userid"]);
               }
             }
-
-
           }
 
           saveVoteComplete(dinnerId);
@@ -697,7 +695,7 @@ const getUserBadges = (req, res) => {
       // Risposta contenente badges utente
       res.json(userBadges);
     }
-  })
+  });
 };
 
 // NB Rotta non utilizzata, nata per debug
