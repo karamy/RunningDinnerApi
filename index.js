@@ -1119,7 +1119,8 @@ const getDinners = (request, response) => {
             type: results.rows[0].dinner_type,
             groupIds: results.rows[0].groupids,
             date: results.rows[0].dinner_date,
-            administrator: results.rows[0].dinner_administrator
+            administrator: results.rows[0].dinner_administrator,
+            state: results.rows[0].dinner_state
           }
           dinnersResult.myDinner = _dinner;
           myDinnerId = results.rows[0].dinnerid; // Memorizzo l'id della cena a cui partecipo per escluderlo nel calcolo di otherDinners
@@ -1174,7 +1175,8 @@ const getDinners = (request, response) => {
                             type: otherDinnersResults.rows[i].dinner_type,
                             groupIds: otherDinnersResults.rows[i].groupids,
                             date: otherDinnersResults.rows[i].dinner_date,
-                            administrator: otherDinnersResults.rows[i].dinner_administrator
+                            administrator: otherDinnersResults.rows[i].dinner_administrator,
+                            state: otherDinnersResults.rows[i].dinner_state
                           }
                           dinnersResult.otherDinners.push(_dinner);
                         }
@@ -1193,6 +1195,20 @@ const getDinners = (request, response) => {
       }
     });
 };
+
+// Restituisce lo state della cena
+const getDinnerState = (request, res) => {
+  const { dinnerId } = request.body;
+
+  pool.query('SELECT dinner_state from dinners WHERE dinnerid = ' + dinnerId, (error, results) => {
+    if (error) {
+      console.log(error);
+      response.status(500).json({ message: 'errore query' })
+    } else {
+      res.json(results.rows[0]);
+    }
+  });
+}
 
 const getDinnerDetails = (request, response) => {
   const dinnerId = request.body.dinnerId;
@@ -1833,6 +1849,11 @@ app
   .get(authenticateJWT, getDinners) // GET endpoint to obtail dinners
   .post(authenticateJWT, createDinner) // POST endpoint to create dinner
   .put(authenticateJWT, updateDinner) // PUT endpoint to update dinner
+
+//Dinner state
+app
+  .route('/getDinnerState')
+  .post(authenticateJWT, getDinnerState)
 
 //Dinner details
 app
