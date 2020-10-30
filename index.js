@@ -1998,7 +1998,7 @@ app
 
 //--------Colloquio Domotica Labs-----//
 
-//CipCiop (Es. http://localhost:1111/cipciop?min=10&max=24&x=9)
+//CipCiop (Es. https://runningdinnerapi.herokuapp.com/cipciop?min=10&max=24&x=9)
 const cipciop = function (request, response) {
   const min = request.query.min || 1;
   const max = request.query.max || 100;
@@ -2032,7 +2032,7 @@ app
   .route('/cipciop')
   .get(cipciop);
 
-//MissingNumbers (Es. http://localhost:1111/missingnumbers?X=1&X=2&X=5&X=25)
+//MissingNumbers (Es. https://runningdinnerapi.herokuapp.com/missingnumbers?X=1&X=2&X=5&X=25)
 const missingNumbers = function (request, response) {
   let Y = "";
   const X = request.query.X.map(x => +x) || [1, 3, 7, 15];
