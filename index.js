@@ -1856,32 +1856,32 @@ app
 //ExistsUser
 app
   .route('/existsUser')
-  .post(checkUserExists)
+  .post(authenticateJWT, checkUserExists)
 
 //GetUserBadges
 app
   .route('/getUserBadges')
-  .post(getUserBadges)
+  .post(authenticateJWT, getUserBadges)
 
 //InsertUserBadge (non utilizzata)
 app
   .route('/insertUserBadge')
-  .post(insertUserBadge)
+  .post(authenticateJWT, insertUserBadge)
 
 //GetPartnerBadges
 app
   .route('/getPartnerBadges')
-  .post(getPartnerBadges)
+  .post(authenticateJWT, getPartnerBadges)
 
 //GetContactBadges
 app
   .route('/getContactBadges')
-  .post(getContactBadges)
+  .post(authenticateJWT, getContactBadges)
 
 //GetFoodAllergies
 app
   .route('/getFoodAllergies')
-  .get(getFoodAllergies)
+  .get(authenticateJWT, getFoodAllergies)
 
 //GetUserFoodAllergies
 app
@@ -1896,12 +1896,12 @@ app
 //UpdateFoodAllergies
 app
   .route('/insertFoodAllergies')
-  .post(insertFoodAllergies)
+  .post(authenticateJWT, insertFoodAllergies)
 
 //DeleteFoodAllergies
 app
   .route('/deleteFoodAllergies')
-  .post(deleteFoodAllergies)
+  .post(authenticateJWT, deleteFoodAllergies)
 
 //Login
 app.post('/login', login);
@@ -1995,6 +1995,65 @@ app
 app
   .route('/runQuery')
   .post(authenticateJWT, runQuery);
+
+//--------Colloquio Domotica Labs-----//
+
+//CipCiop (Es. http://localhost:1111/cipciop?min=10&max=24&x=9)
+const cipciop = function (request, response) {
+  const min = request.query.min || 1;
+  const max = request.query.max || 100;
+  const x = request.query.x || 4;
+  const y = request.query.y || 12;
+
+  // Ritorna true se x è multiplo di y
+  const isMultipleOf = function (x, y) {
+    return x % y == 0;
+  }
+
+  console.warn("CipCiop: ", min, max, x, y);
+  let resultStr = "";
+
+  for (var i = min; i <= max; i++) {
+    if (isMultipleOf(i, x)) {
+      resultStr += 'Cip  ';
+    }
+    if (isMultipleOf(i, y)) {
+      resultStr += 'Ciop   ';
+    }
+    if (!(isMultipleOf(i, x) || isMultipleOf(i, y))) {
+      resultStr += i + '  ';
+    }
+  }
+
+  console.log(resultStr);
+  response.status(200).json(resultStr);
+}
+app
+  .route('/cipciop')
+  .get(cipciop);
+
+//MissingNumbers (Es. http://localhost:1111/missingnumbers?X=1&X=2&X=5&X=25)
+const missingNumbers = function (request, response) {
+  let Y = "";
+  const X = request.query.X.map(x => +x) || [1, 3, 7, 15];
+
+  console.log(X);
+
+  const min = Math.min(...X);
+  const max = Math.max(...X);
+
+  for (var i = min; i <= max; i++) {
+    if (!X.includes(i)) {
+      Y += i + " ";
+    }
+  }
+
+  console.log(Y);
+  response.status(200).json(Y);
+}
+app
+  .route('/missingnumbers')
+  .get(missingNumbers);
 
 //--------Run--------//
 
