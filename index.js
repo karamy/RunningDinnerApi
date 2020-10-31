@@ -2035,9 +2035,15 @@ app
 //MissingNumbers (Es. https://runningdinnerapi.herokuapp.com/missingnumbers?X=1&X=2&X=5&X=25)
 const missingNumbers = function (request, response) {
   let Y = "";
-  const X = request.query.X.map(x => +x) || [1, 3, 7, 15];
 
-  console.log(X);
+  // Check per valorizzare correttamente X
+  let X = request.query.X || [1, 3, 7, 15];
+  if (!Array.isArray(X) && X != undefined) {
+    X = [X];
+  }
+
+  // Conversione X in array di numeri
+  X.map(x => +x);
 
   const min = Math.min(...X);
   const max = Math.max(...X);
