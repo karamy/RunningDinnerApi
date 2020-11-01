@@ -2018,7 +2018,7 @@ const cipciop = function (request, response) {
       resultStr += 'Cip  ';
     }
     if (isMultipleOf(i, y)) {
-      resultStr += 'Ciop   ';
+      resultStr += 'Ciop  ';
     }
     if (!(isMultipleOf(i, x) || isMultipleOf(i, y))) {
       resultStr += i + '  ';
