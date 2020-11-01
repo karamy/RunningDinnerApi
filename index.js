@@ -1998,7 +1998,7 @@ app
 
 //--------Colloquio Domotica Labs-----//
 
-//CipCiop (Es. https://runningdinnerapi.herokuapp.com/cipciop?min=10&max=24&x=9)
+//CipCiop (Es. https://runningdinnerapi.herokuapp.com/cipciop?min=1&max=100&x=4&y=12)
 const cipciop = function (request, response) {
   const min = request.query.min || 1;
   const max = request.query.max || 100;
