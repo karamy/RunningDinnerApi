@@ -2010,7 +2010,7 @@ const cipciop = function (request, response) {
     return x % y == 0;
   }
 
-  console.warn("CipCiop: ", min, max, x, y);
+  console.log("CipCiop: ", min, max, x, y);
   let resultStr = "";
 
   for (var i = min; i <= max; i++) {
@@ -2043,8 +2043,10 @@ const missingNumbers = function (request, response) {
   }
 
   // Conversione X in array di numeri
-  X.map(x => +x);
+  X = X.map(x => +x);
 
+  console.log(X);
+  
   const min = Math.min(...X);
   const max = Math.max(...X);
 
