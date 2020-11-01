@@ -2045,8 +2045,6 @@ const missingNumbers = function (request, response) {
   // Conversione X in array di numeri
   X = X.map(x => +x);
 
-  console.log(X);
-  
   const min = Math.min(...X);
   const max = Math.max(...X);
 
