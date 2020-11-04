@@ -1888,32 +1888,32 @@ app
 //ExistsUser
 app
   .route('/existsUser')
-  .post(checkUserExists)
+  .post(authenticateJWT, checkUserExists)
 
 //GetUserBadges
 app
   .route('/getUserBadges')
-  .post(getUserBadges)
+  .post(authenticateJWT, getUserBadges)
 
 //InsertUserBadge (non utilizzata)
 app
   .route('/insertUserBadge')
-  .post(insertUserBadge)
+  .post(authenticateJWT, insertUserBadge)
 
 //GetPartnerBadges
 app
   .route('/getPartnerBadges')
-  .post(getPartnerBadges)
+  .post(authenticateJWT, getPartnerBadges)
 
 //GetContactBadges
 app
   .route('/getContactBadges')
-  .post(getContactBadges)
+  .post(authenticateJWT, getContactBadges)
 
 //GetFoodAllergies
 app
   .route('/getFoodAllergies')
-  .get(getFoodAllergies)
+  .get(authenticateJWT, getFoodAllergies)
 
 //GetUserFoodAllergies
 app
@@ -1928,12 +1928,12 @@ app
 //UpdateFoodAllergies
 app
   .route('/insertFoodAllergies')
-  .post(insertFoodAllergies)
+  .post(authenticateJWT, insertFoodAllergies)
 
 //DeleteFoodAllergies
 app
   .route('/deleteFoodAllergies')
-  .post(deleteFoodAllergies)
+  .post(authenticateJWT, deleteFoodAllergies)
 
 //Login
 app.post('/login', login);
