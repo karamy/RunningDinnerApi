@@ -942,7 +942,7 @@ const getParams = (request, response) => {
         }
 
         // 2 - DinnerId
-        pool.query('SELECT * FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinners.dinner_date >= current_date AND groupid = ' + rdParams.groupId,
+        pool.query('SELECT * FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid WHERE dinners.dinner_date >= current_date AND dinner_state <> 6 AND dinner_state <> -1 AND groupid = ' + rdParams.groupId,
           (error, results) => {
             if (error) {
               console.warn(error);
@@ -1209,7 +1209,7 @@ const getDinners = (request, response) => {
   let myDinnerId = 0; // Id della cena a cui partecipo
 
   // 1 - MyDinner
-  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= current_date AND dinner_state <> 6 GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
+  pool.query('SELECT dinners.*, array_agg(DISTINCT dinners_detgroups.groupid) AS groupids FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= current_date AND dinner_state <> 6 AND dinner_state <> -1 GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')',
     (error, results) => {
       if (error) {
         console.warn(error);
