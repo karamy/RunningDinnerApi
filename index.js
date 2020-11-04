@@ -1483,6 +1483,38 @@ const getDinnerHouses = (request, res) => {
   });
 }
 
+// Ottengo i vincitori della cena
+const getDinnerWinners = (request, response) => {
+  const { dinnerId } = request.body;
+  console.log("GetDinnerWinners - Dinner: " + dinnerId);
+  const dinnerWinners = [];
+
+  pool.query('SELECT dw.badgeid, dw.userid, dw.has_voted, dw.groupid, users.name, users.profile_photo, dw.vote, badges.badge_photo, dinners_types_badges.category FROM dinners_detwinners AS dw INNER JOIN badges ON dw.badgeid = badges.badge_id INNER JOIN dinners ON dinners.dinnerid = ' + dinnerId + ' INNER JOIN dinners_types_badges ON dinners_types_badges.dinner_type = dinners.dinner_type AND dinners_types_badges.badgeid = dw.badgeid INNER JOIN users ON users.userid = dw.userid WHERE dw.dinnerid = ' + dinnerId,
+    (error, results) => {
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' });
+      } else {
+        for (var i = 0; i < results.rows.length; i++) {
+          const _usersData = {
+            userId: results.rows[i].userid,
+            name: results.rows[i].name,
+            profile_photo: results.rows[i].profile_photo,
+            groupId: results.rows[i].groupid,
+            badgeId: results.rows[i].badgeid,
+            badge_photo: results.rows[i].badge_photo,
+            category: results.rows[i].category,
+            vote: results.rows[i].vote,
+            has_voted: results.rows[i].has_voted
+          }
+          dinnerWinners.push(_usersData);
+        }
+
+        response.status(200).json(dinnerWinners);
+      }
+    });
+};
+
 const insertDinnerVotes = (request, response) => {
   const { groupsArray, votingGroupId, dinnerId } = request.body;
   const votingUserId = request.user.userid;
@@ -1970,6 +2002,11 @@ app
 app
   .route('/getDinnerHouses')
   .post(authenticateJWT, getDinnerHouses)
+
+// Dinner Winners
+app
+  .route('/getDinnerWinners')
+  .post(authenticateJWT, getDinnerWinners)
 
 // Dinner votes
 app
