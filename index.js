@@ -1888,7 +1888,7 @@ app
 //ExistsUser
 app
   .route('/existsUser')
-  .post(authenticateJWT, checkUserExists)
+  .post(checkUserExists)
 
 //GetUserBadges
 app
