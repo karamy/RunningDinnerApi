@@ -1515,6 +1515,22 @@ const getDinnerWinners = (request, response) => {
     });
 };
 
+// Ottengo le cene passate dell'utente
+const getDinnerHistory = (request, response) => {
+  const { userId } = request.body;
+  console.log("GetDinnerHistory - User: " + userId);
+
+  pool.query('SELECT d.dinnerid AS id, d.dinner_title AS title, d.dinner_description AS description, d.dinner_date AS date, d.dinner_type AS type, d.dinner_state AS state FROM dinner_history AS dh INNER JOIN dinners AS d ON d.dinnerid = dh.dinnerid WHERE dh.userid = ' + userId + ' AND d.dinner_state = 6',
+    (error, results) => {
+      if (error) {
+        console.warn(error);
+        response.status(500).json({ message: 'errore query' });
+      } else {
+        response.status(200).json(results.rows);
+      }
+    });
+};
+
 const insertDinnerVotes = (request, response) => {
   const { groupsArray, votingGroupId, dinnerId } = request.body;
   const votingUserId = request.user.userid;
@@ -2007,6 +2023,11 @@ app
 app
   .route('/getDinnerWinners')
   .post(authenticateJWT, getDinnerWinners)
+
+// Dinner History
+app
+  .route('/getDinnerHistory')
+  .post(authenticateJWT, getDinnerHistory)
 
 // Dinner votes
 app
