@@ -1863,7 +1863,41 @@ const updateDinner = (request, response) => {
             response.status(200).send();
           });
       }
-    })
+    });
+};
+
+const sendNewMessageNotification = (request, response) => {
+  const { dinnerId } = request.body;
+  const userId = request.user.userid;
+  const userName = request.user.name;
+
+  // Ottengo l'elenco dei token dei partecipanti alla cena a parte me
+  pool.query('SELECT users.firebase_token, users.name FROM users INNER JOIN groups_users ON (users.userid = groups_users.userid) INNER JOIN dinners_detgroups ON groups_users.groupid = dinners_detgroups.groupid WHERE dinnerid = ' + dinnerId + ' AND users.firebase_token IS NOT NULL AND users.firebase_token <> \'\' AND users.userid <> ' + userId,
+    (error, results) => {
+      const userTokens = [];
+      for (var i = 0; i < results.rows.length; i++) {
+        if (results.rows[i]['firebase_token']) {
+          userTokens.push(results.rows[i]['firebase_token']);
+        }
+      }
+
+      // Genero le informazioni da inviare nella notifica
+      const notificationMsgBody = {
+        type: 'newMessage'
+      };
+
+      // Invio notifiche
+      if (userTokens.length) {
+        sendNotification(userTokens, "Nuovo messaggio",
+          userName + " ha inviato un nuovo messaggio in chat",
+          notificationMsgBody
+        );
+      } else {
+        console.log("sendNewMessageNotification - Nessuno verrà notificato per l'invio del nuovo messaggio");
+      }
+
+      response.status(200).send();
+    });
 };
 
 const runQuery = (request, response) => {
@@ -2048,6 +2082,11 @@ app
 app
   .route('/joinDinner')
   .post(authenticateJWT, joinDinner)
+
+//Send new message notification
+app
+  .route('/sendNewMessageNotification')
+  .post(authenticateJWT, sendNewMessageNotification)
 
 //RunQuery
 app
