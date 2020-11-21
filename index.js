@@ -512,6 +512,9 @@ const elaboraFasi = () => {
 };
 
 // Funzione che elabora i voti della cena
+// NB Scelto apposta di rendere le elaborazioni parallele evitando di utilizzare rollback per potersi
+// limitare ad aggiornare lo stato cena e in automatico le tabelle non ancora riempite si riempiono mentre
+// le altre vanno in DO NOTHING a causa di chiave duplicata, ma almeno evitiamo di cancellare tutto a ogni test
 const elaboraVoti = () => {
   console.log("Elabora voti - Start");
 
@@ -555,11 +558,11 @@ const elaboraVoti = () => {
         console.error('Insert dinner badge: errore query', error);
       }
     });
-  }
+  };
 
-  // Salva il vincitore di categoria e assegna il relativo badge
+  // Salva il vincitore di categoria in dinners_detwinners e assegna il relativo badge
   const insertDinnerVote = function (dinnerId, badgeId, groupId, userId, vote, hasVoted) {
-    pool.query("INSERT INTO dinners_detwinners (dinnerid, badgeid, groupid, userid, vote, has_voted) VALUES ($1, $2, $3, $4, $5, $6)", [dinnerId, badgeId, groupId, userId, vote, hasVoted], (error) => {
+    pool.query("INSERT INTO dinners_detwinners (dinnerid, badgeid, groupid, userid, vote, has_voted) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING", [dinnerId, badgeId, groupId, userId, vote, hasVoted], (error) => {
       if (error) {
         console.error('Insert dinner vote: errore query', error);
       } else {
@@ -568,7 +571,16 @@ const elaboraVoti = () => {
         }
       }
     });
-  }
+  };
+
+  // Riempie tabella dinner_history con elenco utenti partecipanti
+  const fillDinnerhistory = function (dinnerId) {
+    pool.query("INSERT INTO dinner_history (dinnerid, userid) SELECT " + dinnerId + " as dinnerid, gu.userid FROM dinners_detgroups  INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid where dinnerid = "  + dinnerId + " ON CONFLICT DO NOTHING", (error) => {
+      if (error) {
+        console.error('Insert dinner_history: errore query', error);
+      }
+    });
+  };
 
   // Ottengo tutte le cene terminate
   pool.query("SELECT * from dinners  WHERE NOW() AT TIME ZONE 'GMT-2' >= dinner_date + interval '180' minute  AND dinner_state = 5", (error, results) => {
@@ -598,7 +610,7 @@ const elaboraVoti = () => {
             for (var j = 0; j < results.rows.length; j++) {
               insertDinnerVote(dinnerId, results.rows[j]["badgeid"], results.rows[j]["groupid"], results.rows[j]["userid"], results.rows[j]["vote"], results.rows[j]["has_voted"]);
 
-              // Assegnazione badge "di cena" agli utenti
+              // Assegnazione badge "di cena" agli utenti (da completare, per ora messo solo badge 8)
               if (!usersElaborati.includes(results.rows[j]["userid"])) {
                 // 1) Badge partecipazione cena
                 insertDinnerBadge(results.rows[j]["userid"], 8);
@@ -606,11 +618,11 @@ const elaboraVoti = () => {
                 usersElaborati.push(results.rows[j]["userid"]);
               }
             }
-          }
 
-          saveVoteComplete(dinnerId);
-        }
-        );
+            fillDinnerhistory(dinnerId); // Riempio tabella dinner_history
+            saveVoteComplete(dinnerId); // Aggiorno stato cena e invio notifiche
+          }
+        });
       }
     }
   });
