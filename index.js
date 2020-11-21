@@ -435,7 +435,7 @@ const elaboraFasi = () => {
   };
 
   // Fase 1
-  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= dinner_date + interval '-1' hour  AND dinner_state = 1", (error, results) => {
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-1' >= dinner_date + interval '-1' hour  AND dinner_state = 1", (error, results) => {
     if (error) {
       console.error('Elabora fase 1: errore query', error);
     } else {
@@ -454,7 +454,7 @@ const elaboraFasi = () => {
   });
 
   // Fase 2
-  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= (dinner_date + interval '35' minute) AND dinner_state = 2", (error, results) => {
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-1' >= (dinner_date + interval '35' minute) AND dinner_state = 2", (error, results) => {
     if (error) {
       console.error('Elabora fase 2: errore query', error);
     } else {
@@ -473,7 +473,7 @@ const elaboraFasi = () => {
   });
 
   // Fase 3
-  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= (dinner_date + interval '95' minute) AND dinner_state = 3", (error, results) => {
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-1' >= (dinner_date + interval '95' minute) AND dinner_state = 3", (error, results) => {
     if (error) {
       console.error('Elabora fase 3: errore query', error);
     } else {
@@ -492,7 +492,7 @@ const elaboraFasi = () => {
   });
 
   // Fase 4
-  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-2' >= (dinner_date + interval '160' minute) AND dinner_state = 4", (error, results) => {
+  pool.query("SELECT * from dinners WHERE NOW() AT TIME ZONE 'GMT-1' >= (dinner_date + interval '160' minute) AND dinner_state = 4", (error, results) => {
     if (error) {
       console.error('Elabora fase 4: errore query', error);
     } else {
@@ -583,7 +583,7 @@ const elaboraVoti = () => {
   };
 
   // Ottengo tutte le cene terminate
-  pool.query("SELECT * from dinners  WHERE NOW() AT TIME ZONE 'GMT-2' >= dinner_date + interval '180' minute  AND dinner_state = 5", (error, results) => {
+  pool.query("SELECT * from dinners  WHERE NOW() AT TIME ZONE 'GMT-1' >= dinner_date + interval '180' minute  AND dinner_state = 5", (error, results) => {
     if (error) {
       console.error('Elabora voti: errore query', error);
     } else {
