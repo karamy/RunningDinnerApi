@@ -1216,7 +1216,7 @@ const leaveGroup = (request, response) => {
 const getMyDinner = (request, response) => {
   console.log("getMyDinner - User: " + request.user.userid);
 
-  pool.query('SELECT dinners.dinnerid AS id, dinners.dinner_title AS title, dinners.dinner_description AS description, dinners.dinner_type AS type, array_agg(DISTINCT dinners_detgroups.groupid) AS "groupIds", dinners.dinner_date AS date, dinners.dinner_administrator AS administrator, dinners.dinner_state AS state FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= current_date AND dinner_state <> 6 AND dinner_state <> -1 GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')', (error, results) => {
+  pool.query('SELECT dinners.dinnerid AS id, dinners.dinner_title AS title, dinners.dinner_description AS description, dinners.dinner_type AS type, array_agg(DISTINCT dinners_detgroups.groupid) AS groupIds, dinners.dinner_date AS date, dinners.dinner_administrator AS administrator, dinners.dinner_state AS state FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid WHERE dinner_date >= current_date AND dinner_state <> 6 AND dinner_state <> -1 GROUP BY dinners.dinnerid HAVING bool_or(groups_users.userid = ' + request.user.userid + ')', (error, results) => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' });
@@ -1224,7 +1224,7 @@ const getMyDinner = (request, response) => {
       response.status(200).json(results.rows[0]);
     }
   });
-}
+};
 
 // Restituisce le cene disponibili nel raggio di MaxAvgDistance esclusa l'eventuale myDinner
 const getOtherDinners = (request, response) => {
@@ -1287,7 +1287,7 @@ const getOtherDinners = (request, response) => {
       }
     }
   });
-}
+};
 
 // Restituisce lo state della cena
 const getDinnerState = (request, res) => {
