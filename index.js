@@ -1347,7 +1347,7 @@ const getDinnerDetails = (request, response) => {
               }
 
               // 3 - DinnerData
-              pool.query('SELECT dinner_title as title, dinner_description as description FROM dinners WHERE dinnerid = ' + dinnerId,
+              pool.query('SELECT dinner_title as title, dinner_description as description, dinner_administrator AS administrator FROM dinners WHERE dinnerid = ' + dinnerId,
                 (error, results) => {
                   if (error) {
                     console.warn(error);
