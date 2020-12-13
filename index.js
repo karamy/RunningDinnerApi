@@ -977,11 +977,13 @@ const getParams = (request, response) => {
 const compareContacts = (request, response) => {
   const localContacts = request.body;
   const resContacts = [];
+  // RegEx per individuare ogni countryCode esistente
+  const countryCodes = /\+(?:998|996|995|994|993|992|977|976|975|974|973|972|971|970|968|967|966|965|964|963|962|961|960|886|880|856|855|853|852|850|692|691|690|689|688|687|686|685|683|682|681|680|679|678|677|676|675|674|673|672|670|599|598|597|595|593|592|591|590|509|508|507|506|505|504|503|502|501|500|423|421|420|389|387|386|385|383|382|381|380|379|378|377|376|375|374|373|372|371|370|359|358|357|356|355|354|353|352|351|350|299|298|297|291|290|269|268|267|266|265|264|263|262|261|260|258|257|256|255|254|253|252|251|250|249|248|246|245|244|243|242|241|240|239|238|237|236|235|234|233|232|231|230|229|228|227|226|225|224|223|222|221|220|218|216|213|212|211|98|95|94|93|92|91|90|86|84|82|81|66|65|64|63|62|61|60|58|57|56|55|54|53|52|51|49|48|47|46|45|44\D?1624|44\D?1534|44\D?1481|44|43|41|40|39|36|34|33|32|31|30|27|20|7|1\D?939|1\D?876|1\D?869|1\D?868|1\D?849|1\D?829|1\D?809|1\D?787|1\D?784|1\D?767|1\D?758|1\D?721|1\D?684|1\D?671|1\D?670|1\D?664|1\D?649|1\D?473|1\D?441|1\D?345|1\D?340|1\D?284|1\D?268|1\D?264|1\D?246|1\D?242|1)\D?/g;
 
   console.log("CompareContacts - User: " + request.user.userid);
 
   if (localContacts.length > 0) {
-    pool.query('SELECT * FROM users', (error, results) => {
+    pool.query('SELECT users.userid, users.profile_photo, users.phone_number, CASE WHEN groups_users.groupid > 0 THEN true ELSE false END AS is_in_group FROM users LEFT JOIN groups_users ON users.userid = groups_users.userid', (error, results) => {
       if (error) {
         console.warn(error);
         response.status(500).json({ message: 'errore query' })
@@ -990,12 +992,13 @@ const compareContacts = (request, response) => {
         for (var i = 0; i < localContacts.length; i++) { // Per ogni utente su App
           for (var j = 0; j < dbContacts.length; j++) { // Per ogni utente su DB
             for (var x = 0; x < localContacts[i].phoneNumbers.length; x++) { // Per ogni numero di telefono
-              if (localContacts[i].phoneNumbers[x] === dbContacts[j].phone_number &&
+              if ((localContacts[i].phoneNumbers[x] === dbContacts[j].phone_number || localContacts[i].phoneNumbers[x] === dbContacts[j].phone_number.replace(countryCodes, '')) && // Controllo se i numeri combaciano considerando con e senza prefisso
                 !resContacts.find(contact => contact.phoneNumbers === localContacts[i].phoneNumbers[x])) { // Match e controllo se esiste già quel numero
                 resContacts.push({
                   phoneNumbers: localContacts[i].phoneNumbers[x],
                   imageUrl: dbContacts[j].profile_photo,
-                  userId: dbContacts[j].userid
+                  userId: dbContacts[j].userid,
+                  isInGroup: dbContacts[j].is_in_group
                 });
               }
             }
@@ -1231,9 +1234,12 @@ const getOtherDinners = (request, response) => {
   console.log("getOtherDinners - User: " + request.user.userid);
 
   const myDinnerId = request.body.dinnerId;
+  const index = request.body.index;
+  const filter = request.body.filter;
   const otherDinners = [];
+  const dinnersResponse = [];
 
-  pool.query('SELECT dinners.dinnerid AS id, dinners.dinner_title AS title, dinners.dinner_description AS description, dinners.dinner_type AS type, array_agg(dinners_detgroups.groupid) AS "groupIds", dinners.dinner_date as date, dinners.dinner_administrator AS administrator, dinners.dinner_state AS state, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS groups_coordinates FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_state = 0 AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc', (error, otherDinnersResults) => {
+  pool.query('SELECT dinners.dinnerid AS id, dinners.dinner_title AS title, dinners.dinner_description AS description, dinners.dinner_type AS type, array_agg(dinners_detgroups.groupid) AS "groupIds", dinners.dinner_date as date, dinners.dinner_administrator AS administrator, dinners.dinner_state AS state, array_agg(array[dinners_detgroups.groupid,users.address_lat,users.address_lon]) AS groups_coordinates FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN groups_users AS gu ON gu.userid = users.userid WHERE dinner_state = 0 AND gu.house = true AND dinners.dinnerid <> ' + myDinnerId + ' AND CASE WHEN ' + filter + '<> 0 THEN dinners.dinner_type = ' + filter + ' ELSE TRUE END GROUP BY dinners.dinnerid, dinners.dinner_date ORDER BY dinner_date asc', (error, otherDinnersResults) => {
     if (error) {
       console.warn(error);
       response.status(500).json({ message: 'errore query' });
@@ -1277,8 +1283,21 @@ const getOtherDinners = (request, response) => {
                 }
               }
 
+              // Decido, in base all'index ricevuto, quali cene ritornare
+              if (index < otherDinners.length) {
+                if (index + 10 < otherDinners.length) {
+                  for (let i = index; i < index + 10; i++) {
+                    dinnersResponse.push(otherDinners[i]);
+                  }
+                } else {
+                  for (let i = index; i < otherDinners.length; i++) {
+                    dinnersResponse.push(otherDinners[i]);
+                  }
+                }
+              }
+
               // Ritorno le cene disponibili
-              response.status(200).json(otherDinners);
+              response.status(200).json(dinnersResponse);
             }
           });
       } else {
