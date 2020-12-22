@@ -993,7 +993,7 @@ const compareContacts = (request, response) => {
           for (var j = 0; j < dbContacts.length; j++) { // Per ogni utente su DB
             for (var x = 0; x < localContacts[i].phoneNumbers.length; x++) { // Per ogni numero di telefono
               if ((localContacts[i].phoneNumbers[x] === dbContacts[j].phone_number || localContacts[i].phoneNumbers[x] === dbContacts[j].phone_number.replace(countryCodes, '')) && // Controllo se i numeri combaciano considerando con e senza prefisso
-                !resContacts.find(contact => contact.phoneNumbers === localContacts[i].phoneNumbers[x])) { // Match e controllo se esiste già quel numero
+                !resContacts.find(contact => contact.phoneNumbers === localContacts[i].phoneNumbers[x] || contact.phoneNumbers === localContacts[i].phoneNumbers[x].replace(countryCodes, '') || contact.phoneNumbers.replace(countryCodes, '') === localContacts[i].phoneNumbers[x])) { // Match e controllo se esiste già quel numero
                 resContacts.push({
                   phoneNumbers: localContacts[i].phoneNumbers[x],
                   imageUrl: dbContacts[j].profile_photo,
@@ -1379,7 +1379,7 @@ const getDinnerDetails = (request, response) => {
                       dinnerDetails.dinnerData = results.rows[0];
 
                       // 4 - UsersData
-                      pool.query('SELECT users.userid, users.name, users.address, users.birth_date, users.profile_photo, groups_users.groupid, gu.address as group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = groups_users.groupid WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' ORDER BY users.userid',
+                      pool.query('SELECT users.userid, users.birth_date, groups_users.groupid, gu.address as group_address FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN users ON groups_users.userid = users.userid INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = groups_users.groupid WHERE dinners_detgroups.dinnerid = ' + dinnerId + ' ORDER BY users.userid',
                         (error, results) => {
                           if (error) {
                             console.warn(error);
@@ -1389,12 +1389,8 @@ const getDinnerDetails = (request, response) => {
                             for (var i = 0; i < results.rows.length; i++) {
                               const _usersData = {
                                 groupid: results.rows[i].groupid,
-                                userId: results.rows[i].userid,
-                                name: results.rows[i].name,
-                                address: results.rows[i].address,
                                 group_address: results.rows[i].group_address,
                                 birth_date: results.rows[i].birth_date,
-                                profile_photo: results.rows[i].profile_photo
                               }
                               dinnerDetails.usersData.push(_usersData);
                             }
@@ -1433,6 +1429,8 @@ const getDinnerDetails = (request, response) => {
 const getDinnerHouses = (request, res) => {
   const dinnerId = request.body.dinnerId;
   const groupId = request.body.groupId;
+
+  const myDinnerDetails = {};
 
   // Ottengo le case e relative info facenti parte del path dell'utente (compresa la sua)
   pool.query("SELECT 'first' AS group_order, d1.groupid, d1.name, d1.userid, d1.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") AS d1 ON d1.groupid = p1.first_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d1.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId + " UNION ALL SELECT 'second' AS group_order, d2.groupid, d2.name, d2.userid, d2.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") as d2 ON d2.groupid = p1.second_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d2.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId + " UNION ALL SELECT 'third' AS group_order, d3.groupid, d3.name, d3.userid, d3.profile_photo, gu.address FROM dinners_detpaths p1 INNER JOIN (SELECT dinners_detgroups.groupid, gu.userid, u.name, u.profile_photo FROM dinners_detgroups INNER JOIN groups_users gu on dinners_detgroups.groupid = gu.groupid INNER JOIN users u on gu.userid = u.userid WHERE dinners_detgroups.dinnerid = " + dinnerId + ") as d3 ON d3.groupid = p1.third_group_house INNER JOIN (SELECT groups_users.groupid, users.address FROM users INNER JOIN groups_users ON users.userid = groups_users.userid WHERE groups_users.house = true) as GU ON gu.groupid = d3.groupid WHERE p1.dinnerid = " + dinnerId + " AND p1.groupid = " + groupId, (error, results) => {
@@ -1484,7 +1482,30 @@ const getDinnerHouses = (request, res) => {
           }
         }
       }
-      res.status(200).json(dinnerHouses);
+      myDinnerDetails.dinnerHouses = dinnerHouses;
+
+      // FoodAllergies di tutta la cena
+      pool.query('SELECT groups_users.userid, allergies_detusers.allergy_id, allergies_detusers.allergy_name, food_allergies.category, food_allergies.allergy_photo FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN allergies_detusers ON allergies_detusers.user_id = groups_users.userid INNER JOIN food_allergies ON food_allergies.allergy_id = allergies_detusers.allergy_id WHERE dinners_detgroups.dinnerid = ' + dinnerId + 'ORDER BY allergies_detusers.allergy_id',
+        (error, results) => {
+          if (error) {
+            console.warn(error);
+            response.status(500).json({ message: 'errore query' })
+          } else {
+            myDinnerDetails.foodAllergies = [];
+            for (var i = 0; i < results.rows.length; i++) {
+              const _foodAllergies = {
+                user_id: results.rows[i].userid,
+                allergy_id: results.rows[i].allergy_id,
+                allergy_name: results.rows[i].allergy_name,
+                allergy_photo: results.rows[i].allergy_photo,
+                category: results.rows[i].category
+              }
+              myDinnerDetails.foodAllergies.push(_foodAllergies);
+            }
+
+            res.status(200).json(myDinnerDetails);
+          }
+        });
     }
   });
 }
