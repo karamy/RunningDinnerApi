@@ -2133,7 +2133,7 @@ app
 
 // Start Server
 app.listen(process.env.PORT || 1111, () => {
-  console.log(`Server listening`)
+  console.log(`Server listening`);
 })
 
 // Gestione elaborazione cene
