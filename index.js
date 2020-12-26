@@ -1111,7 +1111,7 @@ const inviteGroupConfirm = (request, response) => {
                         const userToken = results.rows[0]['firebase_token'];
                         if (!userToken) { // Non dovrebbe succedere perchè blocchiamo prima di confermare l'aggiunta a gruppo, ma l'utente potrebbe aver fatto logout
                           console.warn('Utente non abilitato a ricevere notifiche push');
-                          response.status(400).json("Utente non abilitato a ricevere notifiche push");
+                          response.status(200).json("Gruppo creato, ma l'altro utente non è abilitato a ricevere notifiche push");
                         } else {
                           // Genero le informazioni da inviare nella notifica
                           const notificationMsgBody = {
