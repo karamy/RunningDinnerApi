@@ -1929,12 +1929,13 @@ const getChatImages = (req, res) => {
   const { dinnerId } = req.body;
   const userId = req.user.userid;
 
-  // Sollevo errore nel caso per qualche motivo mi mandasse la cena vuota
+  // Restituisco vuoto nel caso per qualche motivo mi mandasse la cena vuota
   if (!dinnerId) {
-    res.status(500).json({ message: 'invalid dinner' });
+    res.status(200).json([]);
+    return;
   }
 
-  // Ottengo l'elenco degli utenti (con relative immagini) che fanno attualmente parte della cena
+  // Ottengo l'elenco degli utenti (con relativxe immagini) che fanno attualmente parte della cena
   pool.query('SELECT users.userid, users.name, users.profile_photo FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON users.userid = groups_users.userid WHERE dinners.dinnerid = ' + dinnerId + ' AND users.userid <> ' + userId, (error, results) => {
     if (error) {
       console.warn(error);
