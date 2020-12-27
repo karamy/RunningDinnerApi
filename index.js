@@ -1,9 +1,9 @@
 //--------Dependencies-------//
 
-const express = require('express')
-const bodyParser = require('body-parser')
-const cors = require('cors')
-const { pool } = require('./config')
+const express = require('express');
+const bodyParser = require('body-parser');
+const cors = require('cors');
+const { pool } = require('./config');
 const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
 const serviceAccount = require("./runningdinnersms-firebase-adminsdk-vd0pu-075efce3ba.json");
@@ -2132,7 +2132,7 @@ app
 // Start Server
 app.listen(process.env.PORT || 1111, () => {
   console.log(`Server listening`);
-})
+});
 
 // Gestione elaborazione cene
 elaboraCene();
