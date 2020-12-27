@@ -701,9 +701,9 @@ const getUserBadges = (req, res) => {
   pool.query('SELECT badges.badge_id, COALESCE(badges_detphase.description, badges.description) AS description, COALESCE(badges_detphase.badge_photo, badges.badge_photo) AS badge_photo, badges_detusers.progress, badges_detphase.phase FROM badges LEFT JOIN badges_detusers ON badges.badge_id = badges_detusers.badge_id AND user_id = ' + userId + 'LEFT JOIN badges_detphase ON badges.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress ORDER BY badge_id ', (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
-      const userBadges = results.rows
+      const userBadges = results.rows;
       // Risposta contenente badges utente
       res.json(userBadges);
     }
@@ -718,7 +718,7 @@ const insertUserBadge = (req, res) => {
   pool.query('INSERT INTO badges_detusers (user_id, badge_id, progress) VALUES ($1, $2, 1) ON CONFLICT (user_id, badge_id) DO UPDATE SET progress = badges_detusers.progress + 1', [userData.user_id, userData.badge_id], (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       console.log("Badge aggiunto")
       res.status(200).send();
@@ -733,7 +733,7 @@ const getPartnerBadges = (req, res) => {
   pool.query('SELECT badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description, badges_detphase.phase FROM badges_detusers INNER JOIN groups_users ON groups_users.userid = badges_detusers.user_id INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE groups_users.groupid = ' + groupData.groupId + 'AND groups_users.userid <> ' + groupData.userId + 'ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       const partnerBadges = results.rows
       // Risposta contenente i badges del partner
@@ -748,7 +748,7 @@ const getContactBadges = (req, res) => {
   pool.query('SELECT badges_detusers.badge_id, badges_detphase.badge_photo FROM badges_detusers INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE badges_detusers.user_id = ' + userId + 'ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       const contactBadges = results.rows
       // Risposta contenente i badges del contatto
@@ -775,7 +775,7 @@ const getUserFoodAllergies = (req, res) => {
   pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id WHERE allergies_detusers.user_id = ' + userId, (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       const userAllergies = results.rows
       // Risposta contenente intolleranze utente
@@ -789,7 +789,7 @@ const getPartnerFoodAllergies = (req, res) => {
   pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id INNER JOIN groups_users ON allergies_detusers.user_id = groups_users.userid WHERE groupid = ' + groupData.groupId + ' AND userid <> ' + groupData.userId, (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      res.status(500).json({ message: 'errore query' })
     } else {
       const partnerAllergies = results.rows
       // Risposta contenente intolleranze del partner
@@ -1925,6 +1925,28 @@ const sendNewMessageNotification = (request, response) => {
     });
 };
 
+const getChatImages = (req, res) => {
+  const { dinnerId } = req.body;
+  const userId = req.user.userid;
+
+  // Sollevo errore nel caso per qualche motivo mi mandasse la cena vuota
+  if (!dinnerId) {
+    res.status(500).json({ message: 'invalid dinner' });
+  }
+
+  // Ottengo l'elenco degli utenti (con relative immagini) che fanno attualmente parte della cena
+  pool.query('SELECT users.userid, users.name, users.profile_photo FROM dinners INNER JOIN dinners_detgroups ON dinners.dinnerid = dinners_detgroups.dinnerid INNER JOIN groups_users ON dinners_detgroups.groupid = groups_users.groupid INNER JOIN users ON users.userid = groups_users.userid WHERE dinners.dinnerid = ' + dinnerId + ' AND users.userid <> ' + userId, (error, results) => {
+    if (error) {
+      console.warn(error);
+      res.status(500).json({ message: 'errore query' });
+    } else {
+      const userBadges = results.rows;
+      // Risposta contenente immagini della chat
+      res.json(userBadges);
+    }
+  });
+};
+
 const runQuery = (request, response) => {
   const query = request.body.query;
 
@@ -1953,62 +1975,62 @@ const runQuery = (request, response) => {
 app
   .route('/users')
   .get(authenticateJWT, getUsers) //[Non utilizzare] GET endpoint to list Users
-  .post(addUser) // POST endpoint to signup user
+  .post(addUser); // POST endpoint to signup user
 
 //UpdateUser
 app
   .route('/updateUser')
-  .post(authenticateJWT, updateUser)
+  .post(authenticateJWT, updateUser);
 
 //ExistsUser
 app
   .route('/existsUser')
-  .post(checkUserExists)
+  .post(checkUserExists);
 
 //GetUserBadges
 app
   .route('/getUserBadges')
-  .post(authenticateJWT, getUserBadges)
+  .post(authenticateJWT, getUserBadges);
 
 //InsertUserBadge (non utilizzata)
 app
   .route('/insertUserBadge')
-  .post(authenticateJWT, insertUserBadge)
+  .post(authenticateJWT, insertUserBadge);
 
 //GetPartnerBadges
 app
   .route('/getPartnerBadges')
-  .post(authenticateJWT, getPartnerBadges)
+  .post(authenticateJWT, getPartnerBadges);
 
 //GetContactBadges
 app
   .route('/getContactBadges')
-  .post(authenticateJWT, getContactBadges)
+  .post(authenticateJWT, getContactBadges);
 
 //GetFoodAllergies
 app
   .route('/getFoodAllergies')
-  .get(authenticateJWT, getFoodAllergies)
+  .get(authenticateJWT, getFoodAllergies);
 
 //GetUserFoodAllergies
 app
   .route('/getUserFoodAllergies')
-  .post(getUserFoodAllergies)
+  .post(getUserFoodAllergies);
 
 //GetPartnerFoodAllergies
 app
   .route('/getPartnerFoodAllergies')
-  .post(getPartnerFoodAllergies)
+  .post(getPartnerFoodAllergies);
 
 //UpdateFoodAllergies
 app
   .route('/insertFoodAllergies')
-  .post(authenticateJWT, insertFoodAllergies)
+  .post(authenticateJWT, insertFoodAllergies);
 
 //DeleteFoodAllergies
 app
   .route('/deleteFoodAllergies')
-  .post(authenticateJWT, deleteFoodAllergies)
+  .post(authenticateJWT, deleteFoodAllergies);
 
 //Login
 app.post('/login', login);
@@ -2016,7 +2038,7 @@ app.post('/login', login);
 //Logout
 app
   .route('/logout')
-  .post(logout)
+  .post(logout);
 
 //RefreshToken
 app.post('/refreshToken', refreshToken);
@@ -2024,7 +2046,7 @@ app.post('/refreshToken', refreshToken);
 //Params
 app
   .route('/params')
-  .get(authenticateJWT, getParams)
+  .get(authenticateJWT, getParams);
 
 //CompareContacts
 app
@@ -2060,68 +2082,72 @@ app
 app
   .route('/dinners')
   .post(authenticateJWT, createDinner) // POST endpoint to create dinner
-  .put(authenticateJWT, updateDinner) // PUT endpoint to update dinner
+  .put(authenticateJWT, updateDinner); // PUT endpoint to update dinner
 
 //myDinner
 app
   .route('/getMyDinner')
-  .get(authenticateJWT, getMyDinner)
+  .get(authenticateJWT, getMyDinner);
 
 //otherDinners
 app
   .route('/getOtherDinners')
-  .post(authenticateJWT, getOtherDinners)
+  .post(authenticateJWT, getOtherDinners);
 
 //Dinner state
 app
   .route('/getDinnerState')
-  .post(authenticateJWT, getDinnerState)
+  .post(authenticateJWT, getDinnerState);
 
 //Dinner details
 app
   .route('/getDinnerDetails')
-  .post(authenticateJWT, getDinnerDetails)
+  .post(authenticateJWT, getDinnerDetails);
 
 //Dinner houses
 app
   .route('/getDinnerHouses')
-  .post(authenticateJWT, getDinnerHouses)
+  .post(authenticateJWT, getDinnerHouses);
 
 // Dinner Winners
 app
   .route('/getDinnerWinners')
-  .post(authenticateJWT, getDinnerWinners)
+  .post(authenticateJWT, getDinnerWinners);
 
 // Dinner History
 app
   .route('/getDinnerHistory')
-  .get(authenticateJWT, getDinnerHistory)
+  .get(authenticateJWT, getDinnerHistory);
 
 // Dinner votes
 app
   .route('/insertDinnerVotes')
-  .post(authenticateJWT, insertDinnerVotes)
+  .post(authenticateJWT, insertDinnerVotes);
 
 // Dinner hasVoted
 app
   .route('/checkIfVoted')
-  .post(authenticateJWT, checkIfVoted)
+  .post(authenticateJWT, checkIfVoted);
 
 //Leaver dinner
 app
   .route('/leaveDinner')
-  .post(authenticateJWT, leaveDinner)
+  .post(authenticateJWT, leaveDinner);
 
 //Join dinner
 app
   .route('/joinDinner')
-  .post(authenticateJWT, joinDinner)
+  .post(authenticateJWT, joinDinner);
 
 //Send new message notification
 app
   .route('/sendNewMessageNotification')
-  .post(authenticateJWT, sendNewMessageNotification)
+  .post(authenticateJWT, sendNewMessageNotification);
 
+//GetChatImages
+app
+  .route('/getChatImages')
+  .post(authenticateJWT, getChatImages);
 //RunQuery
 app
   .route('/runQuery')
