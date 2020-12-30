@@ -1687,7 +1687,7 @@ const leaveDinner = (request, response) => {
     } else {
       // Genero le informazioni da inviare nella notifica
       const notificationMsgBody = {
-        type: 'updateParams'
+        type: 'leaveDinner'
       };
       // Invio notifica
       sendNotification(userToken, "Cena abbandonata",
@@ -1834,11 +1834,11 @@ const joinDinner = (request, response) => {
             } else {
               // Genero le informazioni da inviare nella notifica
               const notificationMsgBody = {
-                type: 'updateParams'
+                type: 'joinDinner'
               };
               // Invio notifica
-              sendNotification(userToken, "Cena abbandonata",
-                "Il tuo gruppo ha abbandonato la cena a cui partecipavi",
+              sendNotification(userToken, "Aggiunto ad una cena",
+                "Il tuo gruppo è stato aggiunto ad una cena",
                 notificationMsgBody
               );
             }
