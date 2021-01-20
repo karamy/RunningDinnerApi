@@ -698,7 +698,8 @@ const updateUser = (req, res) => {
 // Ottengo tutti i badge più le eventuali descrizioni/foto della fase corrente se il progress del badge è ==! null
 const getUserBadges = (req, res) => {
   const { userId } = req.body;
-  pool.query('SELECT badges.badge_id, COALESCE(badges_detphase.description, badges.description) AS description, COALESCE(badges_detphase.badge_photo, badges.badge_photo) AS badge_photo, badges_detusers.progress, badges_detphase.phase FROM badges LEFT JOIN badges_detusers ON badges.badge_id = badges_detusers.badge_id AND user_id = ' + userId + 'LEFT JOIN badges_detphase ON badges.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress ORDER BY badge_id ', (error, results) => {
+
+  pool.query('SELECT badges_detphase.badge_id, badges_detphase.description, badges_detphase.badge_photo, badges_detusers. progress, badges_detphase.phase FROM badges_detphase LEFT JOIN badges_detusers ON badges_detphase.badge_id = badges_detusers.badge_id WHERE user_id = ' + userId + ' AND badges_detusers.progress >= badges_detphase.min_progress AND  badges_detusers.progress <= badges_detphase.max_progress UNION ALL SELECT badges_detphase.badge_id, badges_detphase.description, badges_detphase.badge_photo, 0 as progress, 0 as phase FROM badges_detphase WHERE badges_detphase.badge_id NOT IN (select badge_id from badges_detusers where user_id = ' + userId + ') AND badges_detphase.phase = 0 ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
       res.status(500).json({ message: 'errore query' })
@@ -714,7 +715,7 @@ const getUserBadges = (req, res) => {
 // Aggiunge il badge in badges_detusers se non esiste, altrimenti lo aggiorna
 const insertUserBadge = (req, res) => {
   const userData = req.body;
-  console.log(userData)
+
   pool.query('INSERT INTO badges_detusers (user_id, badge_id, progress) VALUES ($1, $2, 1) ON CONFLICT (user_id, badge_id) DO UPDATE SET progress = badges_detusers.progress + 1', [userData.user_id, userData.badge_id], (error, results) => {
     if (error) {
       console.warn(error);
@@ -729,7 +730,7 @@ const insertUserBadge = (req, res) => {
 // Restituisce solo i badge del partner presenti in badges_detphase (ovvero che hanno almeno fase 1)
 const getPartnerBadges = (req, res) => {
   const groupData = req.body;
-  console.log(groupData)
+
   pool.query('SELECT badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description, badges_detphase.phase FROM badges_detusers INNER JOIN groups_users ON groups_users.userid = badges_detusers.user_id INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE groups_users.groupid = ' + groupData.groupId + 'AND groups_users.userid <> ' + groupData.userId + 'ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
@@ -745,6 +746,7 @@ const getPartnerBadges = (req, res) => {
 // Restituisce solo i badge del contatto presenti in badges_detphase (ovvero che hanno almeno fase 1)
 const getContactBadges = (req, res) => {
   const { userId } = req.body;
+
   pool.query('SELECT badges_detusers.badge_id, badges_detphase.badge_photo FROM badges_detusers INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE badges_detusers.user_id = ' + userId + 'ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
@@ -772,6 +774,7 @@ const getFoodAllergies = (request, response) => {
 
 const getUserFoodAllergies = (req, res) => {
   const { userId } = req.body;
+
   pool.query('SELECT * FROM food_allergies INNER JOIN allergies_detusers ON food_allergies.allergy_id = allergies_detusers.allergy_id WHERE allergies_detusers.user_id = ' + userId, (error, results) => {
     if (error) {
       console.warn(error);
@@ -1252,7 +1255,6 @@ const getOtherDinners = (request, response) => {
               console.warn(error);
               response.status(500).json({ message: 'errore query' });
             } else {
-              console.log(userCoordsResult.rows);
               let myLat = userCoordsResult.rows[0].grplat ? userCoordsResult.rows[0].grplat : userCoordsResult.rows[0].mylat;
               let myLon = userCoordsResult.rows[0].grplon ? userCoordsResult.rows[0].grplon : userCoordsResult.rows[0].mylon;
 
@@ -1269,13 +1271,13 @@ const getOtherDinners = (request, response) => {
                 // Calcolo distanza media tra me e i partecipanti alla cena
                 _groupsTotalDistance = 0;
                 for (var j = 0; j < _dinnerGroupsLatLonObj.length; j++) {
-                  _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 1.2, myLat || 0, myLon || 0);
+                  _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 0, myLat || 0, myLon || 0);
                   _groupsTotalDistance += _distance;
                 }
                 _mediaDistanze = _groupsTotalDistance / j;
 
                 // Se la distanza è compatibile con il parametro aggiungo la cena all'elenco
-                console.log("MEDIADIST", otherDinnersResults.rows[i].title, _mediaDistanze);
+                console.log("Media distanze", otherDinnersResults.rows[i].title, _mediaDistanze);
                 if (_mediaDistanze < MaxAvgDistance) {
                   otherDinners.push(otherDinnersResults.rows[i]);
                 }
