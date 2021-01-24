@@ -1328,7 +1328,7 @@ const getDinnerDetails = (request, response) => {
   const dinnerDetails = {};
 
   // 1 - Badges
-  pool.query('SELECT groups_users.groupid, badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN badges_detusers ON badges_detusers.user_id = groups_users.userid INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE dinners_detgroups.dinnerid = ' + dinnerId,
+  pool.query('SELECT groups_users.groupid, badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description_dinner_details as description FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN badges_detusers ON badges_detusers.user_id = groups_users.userid INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE dinners_detgroups.dinnerid = ' + dinnerId,
     (error, results) => {
       if (error) {
         console.warn(error);
@@ -1516,7 +1516,7 @@ const getDinnerWinners = (request, response) => {
   console.log("GetDinnerWinners - Dinner: " + dinnerId);
   const dinnerWinners = [];
 
-  pool.query('SELECT dw.badgeid, dw.userid, dw.has_voted, dw.groupid, users.name, users.profile_photo, dw.vote, badges.badge_photo, dinners_types_badges.category FROM dinners_detwinners AS dw INNER JOIN badges ON dw.badgeid = badges.badge_id INNER JOIN dinners ON dinners.dinnerid = ' + dinnerId + ' INNER JOIN dinners_types_badges ON dinners_types_badges.dinner_type = dinners.dinner_type AND dinners_types_badges.badgeid = dw.badgeid INNER JOIN users ON users.userid = dw.userid WHERE dw.dinnerid = ' + dinnerId,
+  pool.query('SELECT dw.badgeid, dw.userid, dw.has_voted, dw.groupid, users.name, users.profile_photo, dw.vote, badges_detphase. badge_photo, dinners_types_badges.category, badges_detphase.description_dinner_winner as description FROM dinners_detwinners AS dw INNER JOIN badges_detphase ON dw.badgeid = badges_detphase.badge_id INNER JOIN dinners ON dinners.dinnerid = ' + dinnerId + ' INNER JOIN dinners_types_badges ON dinners_types_badges.dinner_type = dinners.dinner_type AND dinners_types_badges.badgeid = dw.badgeid INNER JOIN users ON users.userid = dw.userid WHERE dw.dinnerid = ' + dinnerId + ' AND badges_detphase.phase = 0',
     (error, results) => {
       if (error) {
         console.warn(error);
@@ -1532,7 +1532,8 @@ const getDinnerWinners = (request, response) => {
             badge_photo: results.rows[i].badge_photo,
             category: results.rows[i].category,
             vote: results.rows[i].vote,
-            has_voted: results.rows[i].has_voted
+            has_voted: results.rows[i].has_voted,
+            description: results.rows[i].description
           }
           dinnerWinners.push(_usersData);
         }
