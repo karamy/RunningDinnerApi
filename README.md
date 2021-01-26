@@ -3,7 +3,7 @@ heroku local web -> start local server node che emula l'ambiente su heroku
 heroku logs --tail -> visualizza ultime righe del log di Node
 heroku restart -> riavvia il server runningdinnerapi, utile in caso di crash non gestito per evitare il commit
 heroku ps:scale web=0 -> stoppa il server di Heroku
-heroku ps:scale web=1 -> riattiva il server di Heroku.
+heroku ps:scale web=1 -> riattiva il server di Heroku
 
 ENDPOINT: https://runningdinnerapi.herokuapp.com
 ENDPOINT LOCALE: http://localhost:1111
