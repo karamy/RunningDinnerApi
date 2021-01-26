@@ -107,6 +107,17 @@ const sendNotification = function (userToken, notificationTitle, notificationBod
   }
 };
 
+// Calcolo età dell'utente
+const calcAge = function (birthDate) {
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
 // Funzione che calcola la distanza media tra gli utenti partecipanti (group_address) alla cena e lo user
 const calcDistance = function (userAddress, otherUsersAddresses) {
   return new Promise(async function (resolve) {
@@ -1244,58 +1255,83 @@ const getOtherDinners = (request, response) => {
     } else {
       if (otherDinnersResults.rows.length > 0) {
 
-        // UserCoordinates, ottengo le coordinate di chi per me mette la casa: 
-        // io se non sono in gruppo, l'owner della casa se sono in gruppo
-        pool.query('SELECT users.name, users.address_lat as mylat, users.address_lon as mylon, gu_dinners.groupid, gu_dinners.name as ownername, gu_dinners.address_lat as grplat, gu_dinners.address_lon as grplon FROM users LEFT JOIN groups_users ON users.userid = groups_users.userid LEFT JOIN ( SELECT us.address_lat, us.address_lon, us.userid, us.name, gu.groupid, us.userid FROM groups_users AS gu INNER JOIN users as us ON gu.userid = us.userid WHERE house = true ) AS gu_dinners ON groups_users.groupid = gu_dinners.groupid WHERE users.userid = ' + request.user.userid,
-          (error, userCoordsResult) => {
-            if (error || userCoordsResult.rows.count == 0) {
+        // Ottengo l'età degli utenti e ne calcolo l'età minima e quella massima
+        pool.query('SELECT dd.dinnerid, array_agg(u.birth_date) AS birth_date FROM users AS u INNER JOIN groups_users AS gu ON u.userid = gu.userid INNER JOIN dinners_detgroups AS dd ON dd.groupid = gu.groupid WHERE dd.dinnerid <>' + myDinnerId + 'GROUP BY dd.dinnerid',
+          (error, usersBirthDates) => {
+            if (error || usersBirthDates.rows.count == 0) {
               console.warn(error);
               response.status(500).json({ message: 'errore query' });
             } else {
-              console.log(userCoordsResult.rows);
-              let myLat = userCoordsResult.rows[0].grplat ? userCoordsResult.rows[0].grplat : userCoordsResult.rows[0].mylat;
-              let myLon = userCoordsResult.rows[0].grplon ? userCoordsResult.rows[0].grplon : userCoordsResult.rows[0].mylon;
 
-              let _dinnerGroupsLatLonObj = []; // Array di oggetti del tipo [groupId, latitude, longitude] di chi partecipa alla cena
-              let _groupsTotalDistance = 0; // Distanza totale tra me e i partecipanti
-              let _distance;
-              let _mediaDistanze;
+              for (let i = 0; i < usersBirthDates.rows.length; i++) {
+                const userAges = [];
 
-              console.log("myLat", myLat);
-              console.log("myLon", myLon);
-              for (var i = 0; i < otherDinnersResults.rows.length; i++) {
-                _dinnerGroupsLatLonObj = otherDinnersResults.rows[i].groups_coordinates;
-
-                // Calcolo distanza media tra me e i partecipanti alla cena
-                _groupsTotalDistance = 0;
-                for (var j = 0; j < _dinnerGroupsLatLonObj.length; j++) {
-                  _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 1.2, myLat || 0, myLon || 0);
-                  _groupsTotalDistance += _distance;
+                for (let k = 0; k < usersBirthDates.rows[i].birth_date.length; k++) {
+                  userAges.push(calcAge(usersBirthDates.rows[i].birth_date[k]));
                 }
-                _mediaDistanze = _groupsTotalDistance / j;
 
-                // Se la distanza è compatibile con il parametro aggiungo la cena all'elenco
-                console.log("MEDIADIST", otherDinnersResults.rows[i].title, _mediaDistanze);
-                if (_mediaDistanze < MaxAvgDistance) {
-                  otherDinners.push(otherDinnersResults.rows[i]);
-                }
-              }
-
-              // Decido, in base all'index ricevuto, quali cene ritornare
-              if (index < otherDinners.length) {
-                if (index + 10 < otherDinners.length) {
-                  for (let i = index; i < index + 10; i++) {
-                    dinnersResponse.push(otherDinners[i]);
-                  }
-                } else {
-                  for (let i = index; i < otherDinners.length; i++) {
-                    dinnersResponse.push(otherDinners[i]);
+                for (let j = 0; j < otherDinnersResults.rows.length; j++) {
+                  if (otherDinnersResults.rows[j].id === usersBirthDates.rows[i].dinnerid) {
+                    otherDinnersResults.rows[j].userMinMaxAges = [Math.min.apply(null, userAges), Math.max.apply(null, userAges)];
                   }
                 }
               }
 
-              // Ritorno le cene disponibili
-              response.status(200).json(dinnersResponse);
+              // UserCoordinates, ottengo le coordinate di chi per me mette la casa: 
+              // io se non sono in gruppo, l'owner della casa se sono in gruppo
+              pool.query('SELECT users.name, users.address_lat as mylat, users.address_lon as mylon, gu_dinners.groupid, gu_dinners.name as ownername, gu_dinners.address_lat as grplat, gu_dinners.address_lon as grplon FROM users LEFT JOIN groups_users ON users.userid = groups_users.userid LEFT JOIN ( SELECT us.address_lat, us.address_lon, us.userid, us.name, gu.groupid, us.userid FROM groups_users AS gu INNER JOIN users as us ON gu.userid = us.userid WHERE house = true ) AS gu_dinners ON groups_users.groupid = gu_dinners.groupid WHERE users.userid = ' + request.user.userid,
+                (error, userCoordsResult) => {
+                  if (error || userCoordsResult.rows.count == 0) {
+                    console.warn(error);
+                    response.status(500).json({ message: 'errore query' });
+                  } else {
+                    console.log(userCoordsResult.rows);
+                    let myLat = userCoordsResult.rows[0].grplat ? userCoordsResult.rows[0].grplat : userCoordsResult.rows[0].mylat;
+                    let myLon = userCoordsResult.rows[0].grplon ? userCoordsResult.rows[0].grplon : userCoordsResult.rows[0].mylon;
+
+                    let _dinnerGroupsLatLonObj = []; // Array di oggetti del tipo [groupId, latitude, longitude] di chi partecipa alla cena
+                    let _groupsTotalDistance = 0; // Distanza totale tra me e i partecipanti
+                    let _distance;
+                    let _mediaDistanze;
+
+                    console.log("myLat", myLat);
+                    console.log("myLon", myLon);
+                    for (var i = 0; i < otherDinnersResults.rows.length; i++) {
+                      _dinnerGroupsLatLonObj = otherDinnersResults.rows[i].groups_coordinates;
+
+                      // Calcolo distanza media tra me e i partecipanti alla cena
+                      _groupsTotalDistance = 0;
+                      for (var j = 0; j < _dinnerGroupsLatLonObj.length; j++) {
+                        _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 1.2, myLat || 0, myLon || 0);
+                        _groupsTotalDistance += _distance;
+                      }
+                      _mediaDistanze = _groupsTotalDistance / j;
+                      otherDinnersResults.rows[i].avgDistance = Math.round(_mediaDistanze);
+
+                      // Se la distanza è compatibile con il parametro aggiungo la cena all'elenco
+                      console.log("MEDIADIST", otherDinnersResults.rows[i].title, _mediaDistanze);
+                      if (_mediaDistanze < MaxAvgDistance) {
+                        otherDinners.push(otherDinnersResults.rows[i]);
+                      }
+                    }
+
+                    // Decido, in base all'index ricevuto, quali cene ritornare
+                    if (index < otherDinners.length) {
+                      if (index + 10 < otherDinners.length) {
+                        for (let i = index; i < index + 10; i++) {
+                          dinnersResponse.push(otherDinners[i]);
+                        }
+                      } else {
+                        for (let i = index; i < otherDinners.length; i++) {
+                          dinnersResponse.push(otherDinners[i]);
+                        }
+                      }
+                    }
+
+                    // Ritorno le cene disponibili
+                    response.status(200).json(dinnersResponse);
+                  }
+                });
             }
           });
       } else {
