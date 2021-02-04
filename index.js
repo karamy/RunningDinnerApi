@@ -1304,14 +1304,14 @@ const getOtherDinners = (request, response) => {
                       // Calcolo distanza media tra me e i partecipanti alla cena
                       _groupsTotalDistance = 0;
                       for (var j = 0; j < _dinnerGroupsLatLonObj.length; j++) {
-                  _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 0, myLat || 0, myLon || 0);
+                        _distance = getDistanceFromLatLonInKm(_dinnerGroupsLatLonObj[j][1] || 0, _dinnerGroupsLatLonObj[j][2] || 0, myLat || 0, myLon || 0);
                         _groupsTotalDistance += _distance;
                       }
                       _mediaDistanze = _groupsTotalDistance / j;
                       otherDinnersResults.rows[i].avgDistance = Math.round(_mediaDistanze);
 
                       // Se la distanza è compatibile con il parametro aggiungo la cena all'elenco
-                console.log("Media distanze", otherDinnersResults.rows[i].title, _mediaDistanze);
+                      console.log("Media distanze", otherDinnersResults.rows[i].title, _mediaDistanze);
                       if (_mediaDistanze < MaxAvgDistance) {
                         otherDinners.push(otherDinnersResults.rows[i]);
                       }
@@ -1980,9 +1980,8 @@ const getChatImages = (req, res) => {
       console.warn(error);
       res.status(500).json({ message: 'errore query' });
     } else {
-      const userBadges = results.rows;
-      // Risposta contenente immagini della chat
-      res.json(userBadges);
+      const chatImages = results.rows;
+      res.json(chatImages); // Risposta contenente immagini della chat
     }
   });
 };
