@@ -710,7 +710,7 @@ const updateUser = (req, res) => {
 const getUserBadges = (req, res) => {
   const { userId } = req.body;
 
-  pool.query('SELECT badges_detphase.badge_id, badges_detphase.description, badges_detphase.badge_photo, badges_detusers. progress, badges_detphase.phase FROM badges_detphase LEFT JOIN badges_detusers ON badges_detphase.badge_id = badges_detusers.badge_id WHERE user_id = ' + userId + ' AND badges_detusers.progress >= badges_detphase.min_progress AND  badges_detusers.progress <= badges_detphase.max_progress UNION ALL SELECT badges_detphase.badge_id, badges_detphase.description, badges_detphase.badge_photo, 0 as progress, 0 as phase FROM badges_detphase WHERE badges_detphase.badge_id NOT IN (select badge_id from badges_detusers where user_id = ' + userId + ') AND badges_detphase.phase = 0 ORDER BY badge_id', (error, results) => {
+  pool.query('SELECT badges_detphase.badge_id, badges_detphase.description, badges_detphase.badge_photo, badges_detusers. progress, badges_detphase.phase, b2.help as help FROM badges_detphase LEFT JOIN badges_detusers ON badges_detphase.badge_id = badges_detusers.badge_id INNER JOIN badges_detphase b2 on badges_detusers.badge_id = b2.badge_id AND b2.phase = 0 WHERE user_id = ' + userId + ' AND badges_detusers.progress >= badges_detphase.min_progress AND  badges_detusers.progress <= badges_detphase.max_progress UNION ALL SELECT badges_detphase.badge_id, badges_detphase.description, badges_detphase.badge_photo, 0 as progress, 0 as phase, badges_detphase.help as help FROM badges_detphase WHERE badges_detphase.badge_id NOT IN (select badge_id from badges_detusers where user_id = ' + userId + ') AND badges_detphase.phase = 0 ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
       res.status(500).json({ message: 'errore query' })
@@ -742,7 +742,7 @@ const insertUserBadge = (req, res) => {
 const getPartnerBadges = (req, res) => {
   const groupData = req.body;
 
-  pool.query('SELECT badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description, badges_detphase.phase FROM badges_detusers INNER JOIN groups_users ON groups_users.userid = badges_detusers.user_id INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE groups_users.groupid = ' + groupData.groupId + 'AND groups_users.userid <> ' + groupData.userId + 'ORDER BY badge_id', (error, results) => {
+  pool.query('SELECT badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description, badges_detphase.phase, b2.help AS help FROM badges_detusers INNER JOIN groups_users ON groups_users.userid = badges_detusers.user_id INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress INNER JOIN badges_detphase b2 ON badges_detusers.badge_id = b2.badge_id AND b2.phase = 0   WHERE groups_users.groupid = ' + groupData.groupId + ' AND groups_users.userid <> ' + groupData.userId + ' ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
       res.status(500).json({ message: 'errore query' })
@@ -758,14 +758,13 @@ const getPartnerBadges = (req, res) => {
 const getContactBadges = (req, res) => {
   const { userId } = req.body;
 
-  pool.query('SELECT badges_detusers.badge_id, badges_detphase.badge_photo FROM badges_detusers INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE badges_detusers.user_id = ' + userId + 'ORDER BY badge_id', (error, results) => {
+  pool.query('SELECT badges_detusers.badge_id, badges_detphase.badge_photo, badges_detphase.description_contacts as description, badges_detusers.progress FROM badges_detusers INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE badges_detusers.user_id = ' + userId + 'ORDER BY badge_id', (error, results) => {
     if (error) {
       console.warn(error);
       res.status(500).json({ message: 'errore query' })
     } else {
       const contactBadges = results.rows
-      // Risposta contenente i badges del contatto
-      res.json(contactBadges);
+      res.json(contactBadges); // Risposta contenente i badges del contatto
     }
   })
 };
@@ -1364,7 +1363,7 @@ const getDinnerDetails = (request, response) => {
   const dinnerDetails = {};
 
   // 1 - Badges
-  pool.query('SELECT groups_users.groupid, badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description_dinner_details as description FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN badges_detusers ON badges_detusers.user_id = groups_users.userid INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress WHERE dinners_detgroups.dinnerid = ' + dinnerId,
+  pool.query('SELECT groups_users.groupid, badges_detusers.badge_id, badges_detusers.progress, badges_detphase.badge_photo, badges_detphase.description_dinner_details as description, b2.description_title as title FROM dinners_detgroups INNER JOIN groups_users ON groups_users.groupid = dinners_detgroups.groupid INNER JOIN badges_detusers ON badges_detusers.user_id = groups_users.userid INNER JOIN badges_detphase ON badges_detusers.badge_id = badges_detphase.badge_id AND badges_detusers.progress >= badges_detphase.min_progress AND badges_detusers.progress <= badges_detphase.max_progress  INNER JOIN badges_detphase b2 on badges_detusers.badge_id = b2.badge_id AND b2.phase = 0 WHERE dinners_detgroups.dinnerid = ' + dinnerId,
     (error, results) => {
       if (error) {
         console.warn(error);
@@ -1377,7 +1376,8 @@ const getDinnerDetails = (request, response) => {
             badge_id: results.rows[i].badge_id,
             badge_photo: results.rows[i].badge_photo,
             description: results.rows[i].description,
-            progress: results.rows[i].progress
+            progress: results.rows[i].progress,
+            title: results.rows[i].title
           }
           dinnerDetails.badges.push(_badges);
         }
@@ -1552,7 +1552,7 @@ const getDinnerWinners = (request, response) => {
   console.log("GetDinnerWinners - Dinner: " + dinnerId);
   const dinnerWinners = [];
 
-  pool.query('SELECT dw.badgeid, dw.userid, dw.has_voted, dw.groupid, users.name, users.profile_photo, dw.vote, badges_detphase. badge_photo, dinners_types_badges.category, badges_detphase.description_dinner_winner as description FROM dinners_detwinners AS dw INNER JOIN badges_detphase ON dw.badgeid = badges_detphase.badge_id INNER JOIN dinners ON dinners.dinnerid = ' + dinnerId + ' INNER JOIN dinners_types_badges ON dinners_types_badges.dinner_type = dinners.dinner_type AND dinners_types_badges.badgeid = dw.badgeid INNER JOIN users ON users.userid = dw.userid WHERE dw.dinnerid = ' + dinnerId + ' AND badges_detphase.phase = 0',
+  pool.query('SELECT dw.badgeid, dw.userid, dw.has_voted, dw.groupid, users.name, users.profile_photo, dw.vote, badges_detphase. badge_photo, dinners_types_badges.category, badges_detphase.description_title as description FROM dinners_detwinners AS dw INNER JOIN badges_detphase ON dw.badgeid = badges_detphase.badge_id INNER JOIN dinners ON dinners.dinnerid = ' + dinnerId + ' INNER JOIN dinners_types_badges ON dinners_types_badges.dinner_type = dinners.dinner_type AND dinners_types_badges.badgeid = dw.badgeid INNER JOIN users ON users.userid = dw.userid WHERE dw.dinnerid = ' + dinnerId + ' AND badges_detphase.phase = 0',
     (error, results) => {
       if (error) {
         console.warn(error);
