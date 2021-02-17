@@ -1579,12 +1579,12 @@ const getDinnerWinners = (request, response) => {
     });
 };
 
-// Ottengo le cene passate dell'utente
+// Ottengo le cene passate dell'utente e se nella cena ha vinto qualcosa
 const getDinnerHistory = (request, response) => {
   const userId = request.user.userid;
   console.log("GetDinnerHistory - User: " + userId);
 
-  pool.query('SELECT d.dinnerid AS id, d.dinner_title AS title, d.dinner_description AS description, d.dinner_date AS date, d.dinner_type AS type, d.dinner_state AS state FROM dinner_history AS dh INNER JOIN dinners AS d ON d.dinnerid = dh.dinnerid WHERE dh.userid = ' + userId,
+  pool.query('SELECT d.dinnerid AS id, d.dinner_title AS title, d.dinner_description AS description, d.dinner_date AS date, d.dinner_type AS type, d.dinner_state AS state, dw.winner AS "isWinner" FROM dinner_history AS dh INNER JOIN dinners AS d ON d.dinnerid = dh.dinnerid LEFT JOIN (SELECT dw.dinnerid, (CASE WHEN dw.userid = ' + userId + ' THEN true END) AS winner FROM dinners_detwinners AS dw) AS dw ON dw.dinnerid = d.dinnerid AND dw.winner = true WHERE dh.userid = ' + userId + ' GROUP BY dw.winner, d.dinnerid',
     (error, results) => {
       if (error) {
         console.warn(error);
