@@ -17,7 +17,7 @@ const refreshTokenSecret = 'refreshcarloebbasta';
 const H24 = 86400; // Indica i secondi in un giorno
 const MaxAvgDistance = 80; // Indica la massima distanza media (in km) accettabile per potersi iscrivere alla cena
 const ElaboraCeneInterval = 60000; // Indica (in ms) ogni quanto lanciare l'elaborazione delle cene per generare gli eventi cena e lanciare le notifiche per gli eventi che passano di fase
-
+const GoogleMapsApiKey = 'AIzaSyD18at-7iHsmjzYgGyAIrvysftwnkyK12o'; // Key per effettuare richieste a Google Cloud
 // Elenco di refresh tokens contenenti quelli validi. Dal momento che il refresh token
 // non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
 // la struttura in memoria, che quindi non sopravvive al riavvio del server, 
@@ -143,7 +143,7 @@ const getDistance = function (userAddress, otherAddress) {
         params: {
           origin: userAddress,
           destination: otherAddress,
-          key: "AIzaSyD18at-7iHsmjzYgGyAIrvysftwnkyK12o"
+          key: GoogleMapsApiKey
         },
         timeout: 1000,
       })
@@ -153,7 +153,7 @@ const getDistance = function (userAddress, otherAddress) {
       })
       .catch((e) => {
         console.log('Richiesta fallita, errore: ', e);
-        reject()
+        reject();
       });
   });
 }
