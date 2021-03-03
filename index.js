@@ -11,17 +11,15 @@ const { Client } = require("@googlemaps/google-maps-services-js");
 
 //--------Initialization--------//
 
-const app = express()
+const app = express();
 const accessTokenSecret = 'carloebbasta';
 const refreshTokenSecret = 'refreshcarloebbasta';
 const H24 = 86400; // Indica i secondi in un giorno
 const MaxAvgDistance = 80; // Indica la massima distanza media (in km) accettabile per potersi iscrivere alla cena
 const ElaboraCeneInterval = 60000; // Indica (in ms) ogni quanto lanciare l'elaborazione delle cene per generare gli eventi cena e lanciare le notifiche per gli eventi che passano di fase
 const GoogleMapsApiKey = 'AIzaSyD18at-7iHsmjzYgGyAIrvysftwnkyK12o'; // Key per effettuare richieste a Google Cloud
-// Elenco di refresh tokens contenenti quelli validi. Dal momento che il refresh token
-// non scade mai (per non sbattere mai fuori gli utenti), scelto per ora di mantenere 
-// la struttura in memoria, che quindi non sopravvive al riavvio del server, 
-// il quale sbatte fuori tutti 
+
+// Elenco di refresh token per prolungare la sessione
 const refreshTokens = [];
 
 app.use(bodyParser.json({ limit: '50mb' })); // Configurato per rimuovere il limite di dimensioni del pacchetto http che impediva la registrazione utente
@@ -639,6 +637,27 @@ const elaboraVoti = () => {
   });
 };
 
+// Gestione refreshToken
+const insertRefreshToken = (refreshToken) => {
+  pool.query('INSERT INTO refresh_tokens (token) VALUES ($1) ', [refreshToken], (error) => {
+    if (error) {
+      console.error('Errore inserimento refreshTokens', error);
+    }
+  });
+}
+const loadRefreshTokens = (callBackFn) => {
+  pool.query("SELECT * from refresh_tokens", (error, results) => {
+    if (error) {
+      console.error('Errore caricamento refreshTokens', error);
+    } else {
+      for (var i = 0; i < results.rows.length; i++) {
+        refreshTokens.push(results.rows[i]['token']);
+      }
+    }
+    callBackFn();
+  });
+}
+
 //--------Routes Functions-------//
 
 const getUsers = (request, response) => {
@@ -872,7 +891,10 @@ const login = (req, res) => {
             // Genero access token e refresh token, impostando la durata a un giorno
             const accessToken = jwt.sign(userData, accessTokenSecret, { expiresIn: H24 });
             const refreshToken = jwt.sign(userData, refreshTokenSecret);
-            refreshTokens.push(refreshToken); // Aggiungo il refreshToken alla lista in memoria, non sopravvive a riavvio server
+
+            // Aggiungo il refreshToken alla lista in memoria e su DB
+            refreshTokens.push(refreshToken);
+            insertRefreshToken(refreshToken);
 
             // Risposta contenente token e dati utente
             res.json({
@@ -908,7 +930,7 @@ const refreshToken = (req, res) => {
   const refreshToken = req.body.refreshToken;
 
   if (!refreshTokens.includes(refreshToken)) {
-    return res.status(404).send('Refresh token not found (server riavviato)');
+    return res.status(404).send('Refresh token not found');
   }
 
   // Verifico refresh token
@@ -2195,9 +2217,12 @@ app
 //--------Run--------//
 
 // Start Server
-app.listen(process.env.PORT || 1111, () => {
-  console.log(`Server listening`);
-});
+const startServerCallback = () => {
+  app.listen(process.env.PORT || 1111, () => {
+    console.log(`Server listening`);
+  });
+}
+loadRefreshTokens(startServerCallback);
 
 // Gestione elaborazione cene
 elaboraCene();
