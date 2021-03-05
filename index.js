@@ -645,6 +645,13 @@ const insertRefreshToken = (refreshToken) => {
     }
   });
 }
+const deleteRefreshToken = (refreshToken) => {
+  pool.query('DELETE FROM refresh_tokens WHERE token = $1 ', [refreshToken], (error) => {
+    if (error) {
+      console.error('Errore cancellazione refreshTokens', error);
+    }
+  });
+}
 const loadRefreshTokens = (callBackFn) => {
   pool.query("SELECT * from refresh_tokens", (error, results) => {
     if (error) {
@@ -912,18 +919,23 @@ const login = (req, res) => {
 };
 
 const logout = (request, response) => {
-  const { userId } = request.body;
+  const { userId, refreshToken } = request.body;
 
   console.warn('Logout: ' + userId);
 
+  // Rimuovo firebase_token
   pool.query('UPDATE users SET firebase_token = NULL WHERE userid = ' + userId, (error, results) => {
     if (error) {
       console.warn(error);
-      response.status(500).json({ message: 'errore query' })
+      response.status(500).json({ message: 'errore query' });
     } else {
+      // Rimuovo refresh_token
+      if (refreshToken) {
+        deleteRefreshToken(refreshToken);
+      }
       response.status(200).send();
     }
-  })
+  });
 };
 
 const refreshToken = (req, res) => {
