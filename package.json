@@ -13,7 +13,7 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@googlemaps/google-maps-services-js": "^3.0.0",
+    "@googlemaps/google-maps-services-js": "^3.4.2",
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",
     "dotenv": "^8.2.0",
